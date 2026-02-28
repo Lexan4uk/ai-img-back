@@ -1,0 +1,273 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+    xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+    xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+    xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+        http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-latest.xsd">
+
+    <!-- ========================= -->
+    <!-- PROMPTS                   -->
+    <!-- ========================= -->
+    <changeSet id="4-prompts" author="you">
+        <comment>Промпты — одноразовые снимки, создаются при генерации</comment>
+
+        <createTable tableName="prompts">
+            <column name="id" type="UUID" defaultValueComputed="gen_random_uuid()">
+                <constraints primaryKey="true" nullable="false"/>
+            </column>
+            <column name="owner_user_id" type="UUID">
+                <constraints nullable="true"/>
+            </column>
+            <column name="text" type="TEXT">
+                <constraints nullable="false"/>
+            </column>
+            <!--
+                generation_params — JSONB для масштабируемости.
+                Сейчас: {"width": 1024, "height": 1024}
+                Завтра: + любые новые параметры без миграций.
+                
+                В PostgreSQL JSONB — бинарный JSON с индексацией.
+                В Java будем хранить как String и парсить через Jackson.
+            -->
+            <column name="generation_params" type="JSONB" defaultValueComputed="'{}'::jsonb">
+                <constraints nullable="false"/>
+            </column>
+            <column name="created_at" type="TIMESTAMPTZ" defaultValueComputed="NOW()">
+                <constraints nullable="false"/>
+            </column>
+        </createTable>
+
+        <sql>
+            ALTER TABLE prompts
+                ADD CONSTRAINT fk_prompts_user
+                    FOREIGN KEY (owner_user_id)
+                    REFERENCES users(id)
+                    ON DELETE SET NULL;
+        </sql>
+
+        <createIndex indexName="ix_prompts_owner_created" tableName="prompts">
+            <column name="owner_user_id"/>
+            <column name="created_at" descending="true"/>
+        </createIndex>
+    </changeSet>
+
+    <!-- ========================= -->
+    <!-- ASSETS                    -->
+    <!-- ========================= -->
+    <changeSet id="4-assets" author="you">
+        <comment>Сгенерированные изображения + снапшоты промптов</comment>
+
+        <createTable tableName="assets">
+            <column name="id" type="UUID" defaultValueComputed="gen_random_uuid()">
+                <constraints primaryKey="true" nullable="false"/>
+            </column>
+            <column name="owner_user_id" type="UUID">
+                <constraints nullable="true"/>
+            </column>
+            <column name="image_type_id" type="UUID">
+                <constraints nullable="false"/>
+            </column>
+            <column name="style_id" type="UUID">
+                <constraints nullable="false"/>
+            </column>
+            <column name="prompt_id" type="UUID">
+                <constraints nullable="false"/>
+            </column>
+
+            <!-- Снапшоты — "заморозка" промптов на момент генерации -->
+            <column name="user_prompt_snapshot" type="TEXT">
+                <constraints nullable="false"/>
+            </column>
+            <column name="type_prompt_snapshot" type="TEXT" defaultValue="">
+                <constraints nullable="false"/>
+            </column>
+            <column name="style_prompt_snapshot" type="TEXT" defaultValue="">
+                <constraints nullable="false"/>
+            </column>
+            <column name="final_prompt_snapshot" type="TEXT">
+                <constraints nullable="false"/>
+            </column>
+            <column name="final_prompt_hash" type="TEXT">
+                <constraints nullable="false"/>
+            </column>
+
+            <!-- Результат генерации -->
+            <column name="file_uri" type="TEXT">
+                <constraints nullable="false"/>
+            </column>
+            <column name="provider" type="TEXT"/>
+            <column name="model" type="TEXT"/>
+            <column name="meta" type="JSONB"/>
+
+            <column name="created_at" type="TIMESTAMPTZ" defaultValueComputed="NOW()">
+                <constraints nullable="false"/>
+            </column>
+        </createTable>
+
+        <!-- FK-и с правильным ON DELETE -->
+        <sql>
+            ALTER TABLE assets
+                ADD CONSTRAINT fk_assets_user
+                    FOREIGN KEY (owner_user_id) REFERENCES users(id) ON DELETE SET NULL,
+                ADD CONSTRAINT fk_assets_image_type
+                    FOREIGN KEY (image_type_id) REFERENCES image_types(id),
+                ADD CONSTRAINT fk_assets_style
+                    FOREIGN KEY (style_id) REFERENCES styles(id),
+                ADD CONSTRAINT fk_assets_prompt
+                    FOREIGN KEY (prompt_id) REFERENCES prompts(id);
+        </sql>
+
+        <!-- Дедупликация: по пользователю + хешу -->
+        <createIndex indexName="ix_assets_owner_final_hash" tableName="assets">
+            <column name="owner_user_id"/>
+            <column name="final_prompt_hash"/>
+        </createIndex>
+
+        <!-- Галерея: все картинки по (тип, стиль), новые сверху -->
+        <createIndex indexName="ix_assets_type_style_created" tableName="assets">
+            <column name="image_type_id"/>
+            <column name="style_id"/>
+            <column name="created_at" descending="true"/>
+        </createIndex>
+
+        <createIndex indexName="ix_assets_prompt" tableName="assets">
+            <column name="prompt_id"/>
+        </createIndex>
+    </changeSet>
+
+    <!-- ========================= -->
+    <!-- GENERATION BATCHES        -->
+    <!-- ========================= -->
+    <changeSet id="4-generation-batches" author="you">
+        <comment>Пакеты генераций (один запуск пользователя = один batch)</comment>
+
+        <createTable tableName="generation_batches">
+            <column name="id" type="UUID" defaultValueComputed="gen_random_uuid()">
+                <constraints primaryKey="true" nullable="false"/>
+            </column>
+            <column name="owner_user_id" type="UUID">
+                <constraints nullable="true"/>
+            </column>
+            <column name="provider" type="TEXT">
+                <constraints nullable="false"/>
+            </column>
+            <column name="model" type="TEXT"/>
+            <column name="routing_mode" type="TEXT">
+                <constraints nullable="false"/>
+            </column>
+            <column name="status" type="TEXT">
+                <constraints nullable="false"/>
+            </column>
+            <column name="created_at" type="TIMESTAMPTZ" defaultValueComputed="NOW()">
+                <constraints nullable="false"/>
+            </column>
+            <column name="started_at" type="TIMESTAMPTZ"/>
+            <column name="finished_at" type="TIMESTAMPTZ"/>
+        </createTable>
+
+        <sql>
+            ALTER TABLE generation_batches
+                ADD CONSTRAINT fk_gen_batches_user
+                    FOREIGN KEY (owner_user_id) REFERENCES users(id) ON DELETE SET NULL,
+                ADD CONSTRAINT ck_generation_batches_routing
+                    CHECK (routing_mode IN ('DIRECT','PROXY')),
+                ADD CONSTRAINT ck_generation_batches_status
+                    CHECK (status IN ('NEW','RUNNING','DONE','FAILED'));
+        </sql>
+
+        <createIndex indexName="ix_gen_batches_owner_created" tableName="generation_batches">
+            <column name="owner_user_id"/>
+            <column name="created_at" descending="true"/>
+        </createIndex>
+    </changeSet>
+
+    <!-- ========================= -->
+    <!-- GENERATION REQUESTS       -->
+    <!-- ========================= -->
+    <changeSet id="4-generation-requests" author="you">
+        <comment>Отдельные запросы внутри batch (одна пара type+style = один request)</comment>
+
+        <createTable tableName="generation_requests">
+            <column name="id" type="UUID" defaultValueComputed="gen_random_uuid()">
+                <constraints primaryKey="true" nullable="false"/>
+            </column>
+            <column name="batch_id" type="UUID">
+                <constraints nullable="false"/>
+            </column>
+            <column name="owner_user_id" type="UUID">
+                <constraints nullable="true"/>
+            </column>
+            <column name="image_type_id" type="UUID">
+                <constraints nullable="false"/>
+            </column>
+            <column name="style_id" type="UUID">
+                <constraints nullable="false"/>
+            </column>
+            <column name="prompt_id" type="UUID">
+                <constraints nullable="false"/>
+            </column>
+
+            <column name="user_prompt_snapshot" type="TEXT">
+                <constraints nullable="false"/>
+            </column>
+            <column name="final_prompt_snapshot" type="TEXT">
+                <constraints nullable="false"/>
+            </column>
+            <column name="final_prompt_hash" type="TEXT">
+                <constraints nullable="false"/>
+            </column>
+
+            <column name="dedupe_result" type="TEXT">
+                <constraints nullable="false"/>
+            </column>
+            <column name="dedupe_mode" type="TEXT">
+                <constraints nullable="false"/>
+            </column>
+            <column name="status" type="TEXT">
+                <constraints nullable="false"/>
+            </column>
+
+            <column name="created_asset_id" type="UUID"/>
+            <column name="error_message" type="TEXT"/>
+
+            <column name="created_at" type="TIMESTAMPTZ" defaultValueComputed="NOW()">
+                <constraints nullable="false"/>
+            </column>
+            <column name="started_at" type="TIMESTAMPTZ"/>
+            <column name="finished_at" type="TIMESTAMPTZ"/>
+        </createTable>
+
+        <sql>
+            ALTER TABLE generation_requests
+                ADD CONSTRAINT fk_gen_req_batch
+                    FOREIGN KEY (batch_id) REFERENCES generation_batches(id) ON DELETE CASCADE,
+                ADD CONSTRAINT fk_gen_req_user
+                    FOREIGN KEY (owner_user_id) REFERENCES users(id) ON DELETE SET NULL,
+                ADD CONSTRAINT fk_gen_req_image_type
+                    FOREIGN KEY (image_type_id) REFERENCES image_types(id),
+                ADD CONSTRAINT fk_gen_req_style
+                    FOREIGN KEY (style_id) REFERENCES styles(id),
+                ADD CONSTRAINT fk_gen_req_prompt
+                    FOREIGN KEY (prompt_id) REFERENCES prompts(id),
+                ADD CONSTRAINT fk_gen_req_asset
+                    FOREIGN KEY (created_asset_id) REFERENCES assets(id),
+                ADD CONSTRAINT ck_gen_req_dedupe_result
+                    CHECK (dedupe_result IN ('NEW','DUPLICATE')),
+                ADD CONSTRAINT ck_gen_req_dedupe_mode
+                    CHECK (dedupe_mode IN ('SKIP','OVERWRITE')),
+                ADD CONSTRAINT ck_gen_req_status
+                    CHECK (status IN ('PENDING','RUNNING','SKIPPED','DONE','FAILED'));
+        </sql>
+
+        <createIndex indexName="ix_gen_req_batch_status" tableName="generation_requests">
+            <column name="batch_id"/>
+            <column name="status"/>
+        </createIndex>
+
+        <createIndex indexName="ix_gen_req_owner_created" tableName="generation_requests">
+            <column name="owner_user_id"/>
+            <column name="created_at" descending="true"/>
+        </createIndex>
+    </changeSet>
+
+</databaseChangeLog>

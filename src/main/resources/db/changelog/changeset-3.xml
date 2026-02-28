@@ -1,0 +1,97 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+    xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+    xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+    xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+        http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-latest.xsd">
+
+    <!--
+        Таблицы избранного — связь many-to-many между user и type/style.
+        
+        В TypeORM ты бы сделал @ManyToMany(() => ImageType) с @JoinTable().
+        Тут — руками создаём junction-таблицы (промежуточные таблицы).
+        
+        Составной PK (user_id + image_type_id) — гарантирует что
+        пользователь не добавит один тип в избранное дважды.
+        
+        CASCADE с обеих сторон:
+        - удалён пользователь → его избранное удаляется
+        - удалён тип/стиль → записи избранного удаляются
+    -->
+
+    <changeSet id="3-favorite-types" author="you">
+        <comment>Избранные типы изображений</comment>
+
+        <createTable tableName="user_favorite_types">
+            <column name="user_id" type="UUID">
+                <constraints nullable="false"/>
+            </column>
+            <column name="image_type_id" type="UUID">
+                <constraints nullable="false"/>
+            </column>
+            <column name="created_at" type="TIMESTAMPTZ" defaultValueComputed="NOW()">
+                <constraints nullable="false"/>
+            </column>
+        </createTable>
+
+        <!-- Составной первичный ключ -->
+        <addPrimaryKey
+            tableName="user_favorite_types"
+            columnNames="user_id, image_type_id"
+            constraintName="pk_user_favorite_types"/>
+
+        <addForeignKeyConstraint
+            baseTableName="user_favorite_types"
+            baseColumnNames="user_id"
+            constraintName="fk_fav_types_user"
+            referencedTableName="users"
+            referencedColumnNames="id"
+            onDelete="CASCADE"/>
+
+        <addForeignKeyConstraint
+            baseTableName="user_favorite_types"
+            baseColumnNames="image_type_id"
+            constraintName="fk_fav_types_image_type"
+            referencedTableName="image_types"
+            referencedColumnNames="id"
+            onDelete="CASCADE"/>
+    </changeSet>
+
+    <changeSet id="3-favorite-styles" author="you">
+        <comment>Избранные стили</comment>
+
+        <createTable tableName="user_favorite_styles">
+            <column name="user_id" type="UUID">
+                <constraints nullable="false"/>
+            </column>
+            <column name="style_id" type="UUID">
+                <constraints nullable="false"/>
+            </column>
+            <column name="created_at" type="TIMESTAMPTZ" defaultValueComputed="NOW()">
+                <constraints nullable="false"/>
+            </column>
+        </createTable>
+
+        <addPrimaryKey
+            tableName="user_favorite_styles"
+            columnNames="user_id, style_id"
+            constraintName="pk_user_favorite_styles"/>
+
+        <addForeignKeyConstraint
+            baseTableName="user_favorite_styles"
+            baseColumnNames="user_id"
+            constraintName="fk_fav_styles_user"
+            referencedTableName="users"
+            referencedColumnNames="id"
+            onDelete="CASCADE"/>
+
+        <addForeignKeyConstraint
+            baseTableName="user_favorite_styles"
+            baseColumnNames="style_id"
+            constraintName="fk_fav_styles_style"
+            referencedTableName="styles"
+            referencedColumnNames="id"
+            onDelete="CASCADE"/>
+    </changeSet>
+
+</databaseChangeLog>

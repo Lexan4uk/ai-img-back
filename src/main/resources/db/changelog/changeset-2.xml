@@ -1,0 +1,128 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+    xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+    xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+    xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+        http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-latest.xsd">
+
+    <!-- ========================= -->
+    <!-- IMAGE TYPES               -->
+    <!-- ========================= -->
+    <changeSet id="2-image-types" author="you">
+        <comment>Справочник типов изображений (общий, immutable)</comment>
+
+        <createTable tableName="image_types">
+            <column name="id" type="UUID" defaultValueComputed="gen_random_uuid()">
+                <constraints primaryKey="true" nullable="false"/>
+            </column>
+
+            <!--
+                created_by_user_id — кто создал этот тип.
+                NULL допустим: если пользователь удалён, тип остаётся.
+                ON DELETE SET NULL — PostgreSQL сам обнулит поле при удалении юзера.
+            -->
+            <column name="created_by_user_id" type="UUID">
+                <constraints
+                    foreignKeyName="fk_image_types_user"
+                    references="users(id)"
+                    deleteCascade="false"/>
+            </column>
+
+            <column name="name" type="TEXT">
+                <constraints nullable="false"/>
+            </column>
+
+            <column name="type_prompt" type="TEXT"/>
+
+            <column name="created_at" type="TIMESTAMPTZ" defaultValueComputed="NOW()">
+                <constraints nullable="false"/>
+            </column>
+        </createTable>
+
+        <!--
+            Уникальность имени (case-insensitive, глобально).
+            lower(name) — индекс по нижнему регистру.
+            В NestJS/TypeORM это @Unique(), но partial/functional
+            индексы TypeORM не поддерживает — пришлось бы писать raw SQL.
+            В Liquibase используем <sql> для таких случаев.
+        -->
+        <sql>
+            CREATE UNIQUE INDEX ux_image_types_name ON image_types (lower(name));
+        </sql>
+
+        <!--
+            ON DELETE SET NULL — Liquibase не поддерживает в <addForeignKeyConstraint>
+            напрямую через createTable, поэтому пересоздаём FK вручную.
+        -->
+        <sql>
+            ALTER TABLE image_types
+                DROP CONSTRAINT IF EXISTS fk_image_types_user,
+                ADD CONSTRAINT fk_image_types_user
+                    FOREIGN KEY (created_by_user_id)
+                    REFERENCES users(id)
+                    ON DELETE SET NULL;
+        </sql>
+    </changeSet>
+
+    <!-- Seed: "Неопределённый" тип — fallback при удалении типа -->
+    <changeSet id="2-image-types-seed" author="you">
+        <comment>Seed: неопределённый тип (нельзя удалять)</comment>
+        <sql>
+            INSERT INTO image_types (id, created_by_user_id, name, type_prompt)
+            VALUES ('00000000-0000-0000-0000-000000000001', NULL, 'Неопределённый', NULL);
+        </sql>
+    </changeSet>
+
+    <!-- ========================= -->
+    <!-- STYLES                    -->
+    <!-- ========================= -->
+    <changeSet id="2-styles" author="you">
+        <comment>Справочник стилей (общий, immutable)</comment>
+
+        <createTable tableName="styles">
+            <column name="id" type="UUID" defaultValueComputed="gen_random_uuid()">
+                <constraints primaryKey="true" nullable="false"/>
+            </column>
+
+            <column name="created_by_user_id" type="UUID">
+                <constraints
+                    foreignKeyName="fk_styles_user"
+                    references="users(id)"
+                    deleteCascade="false"/>
+            </column>
+
+            <column name="name" type="TEXT">
+                <constraints nullable="false"/>
+            </column>
+
+            <column name="style_prompt" type="TEXT"/>
+
+            <column name="created_at" type="TIMESTAMPTZ" defaultValueComputed="NOW()">
+                <constraints nullable="false"/>
+            </column>
+        </createTable>
+
+        <sql>
+            CREATE UNIQUE INDEX ux_styles_name ON styles (lower(name));
+        </sql>
+
+        <sql>
+            ALTER TABLE styles
+                DROP CONSTRAINT IF EXISTS fk_styles_user,
+                ADD CONSTRAINT fk_styles_user
+                    FOREIGN KEY (created_by_user_id)
+                    REFERENCES users(id)
+                    ON DELETE SET NULL;
+        </sql>
+    </changeSet>
+
+    <!-- Seed: "Неопределённый" стиль — fallback при удалении стиля -->
+    <changeSet id="2-styles-seed" author="you">
+        <comment>Seed: неопределённый стиль (нельзя удалять)</comment>
+        <sql>
+            INSERT INTO styles (id, created_by_user_id, name, style_prompt)
+            VALUES ('00000000-0000-0000-0000-000000000002', NULL, 'Неопределённый', NULL);
+        </sql>
+    </changeSet>
+
+</databaseChangeLog>
