@@ -83,12 +83,11 @@ public class ImageTypeController {
         imageTypeService.removeFavorite(currentUserId, id);
     }
 
-    /** GET /image-types/favorites — мои избранные типы */
+    /** GET /image-types/favorites — ID избранных типов */
     @GetMapping("/favorites")
-    public List<ImageTypeDTO> getFavorites(@RequestHeader("UserId") UUID currentUserId) {
-        return imageTypeService.getFavorites(currentUserId).stream()
-                .map(ImageTypeDTO::new)
-                .toList();
+    public List<UUID> getFavoriteIds(@RequestHeader("UserId") UUID currentUserId) {
+        return imageTypeService.getFavoriteIds(currentUserId);
     }
+
 
 }

@@ -233,12 +233,12 @@ public class StyleControllerTest extends BaseTest {
                 .andExpect(status().isOk())
                 .andReturn().getResponse();
 
-        StyleDTO[] favorites = objectMapper.readValue(
-                resp.getContentAsString(), StyleDTO[].class);
+        UUID[] favorites = objectMapper.readValue(
+                resp.getContentAsString(), UUID[].class);
 
         boolean found = false;
-        for (StyleDTO f : favorites) {
-            if (f.getId().equals(style.getId())) {
+        for (UUID f : favorites) {
+            if (f.equals(style.getId())) {
                 found = true;
                 break;
             }
@@ -279,11 +279,11 @@ public class StyleControllerTest extends BaseTest {
                 .andExpect(status().isOk())
                 .andReturn().getResponse();
 
-        StyleDTO[] favorites = objectMapper.readValue(
-                resp.getContentAsString(), StyleDTO[].class);
+        UUID[] favorites = objectMapper.readValue(
+                resp.getContentAsString(), UUID[].class);
 
-        for (StyleDTO f : favorites) {
-            assertNotEquals(style.getId(), f.getId());
+        for (UUID f : favorites) {
+            assertNotEquals(style.getId(), f);
         }
     }
 
@@ -306,8 +306,8 @@ public class StyleControllerTest extends BaseTest {
                 .andExpect(status().isOk())
                 .andReturn().getResponse();
 
-        StyleDTO[] favorites = objectMapper.readValue(
-                resp.getContentAsString(), StyleDTO[].class);
+        UUID[] favorites = objectMapper.readValue(
+                resp.getContentAsString(), UUID[].class);
 
         assertEquals(0, favorites.length);
     }

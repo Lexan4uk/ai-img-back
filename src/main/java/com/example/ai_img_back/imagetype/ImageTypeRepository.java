@@ -189,17 +189,16 @@ public class ImageTypeRepository {
      *   user.favoriteTypes (через @ManyToMany relation)
      * Тут — ручной JOIN.
      */
-    public List<ImageType> findFavoritesByUserId(UUID userId) {
-        String sql = """
-                SELECT it.id, it.created_by_user_id, it.name, it.type_prompt, it.created_at
-                FROM image_types it
-                JOIN user_favorite_types uft ON uft.image_type_id = it.id
-                WHERE uft.user_id = :userId
-                ORDER BY it.name
-                """;
+    public List<UUID> findFavoriteIdsByUserId(UUID userId) {
+    String sql = """
+            SELECT image_type_id
+            FROM user_favorite_types
+            WHERE user_id = :userId
+            """;
 
-        return jdbcTemplate.query(sql, new MapSqlParameterSource("userId", userId),
-                IMAGE_TYPE_MAPPER);
-    }
+    return jdbcTemplate.queryForList(sql,
+            new MapSqlParameterSource("userId", userId), UUID.class);
+}
+
 
 }

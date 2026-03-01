@@ -66,10 +66,9 @@ public class StyleController {
     }
 
     @GetMapping("/favorites")
-    public List<StyleDTO> getFavorites(@RequestHeader("UserId") UUID currentUserId) {
-        return styleService.getFavorites(currentUserId).stream()
-                .map(StyleDTO::new)
-                .toList();
+    public List<UUID> getFavoriteIds(@RequestHeader("UserId") UUID currentUserId) {
+        return styleService.getFavoriteIds(currentUserId);
     }
+
 
 }

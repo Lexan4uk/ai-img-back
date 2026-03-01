@@ -75,11 +75,13 @@ _(избранное user_favorite_types удалится автоматичес
 
 **Действия:** `DELETE FROM user_favorite_types WHERE user_id = :userId AND image_type_id = :typeId`
 
-### 2.3 Получить избранные типы
+### 2.3 Получить ID избранных типов
 
-**Действия:** `SELECT ... FROM image_types JOIN user_favorite_types ON ... WHERE user_id = :userId`
+**Действия:** `SELECT image_type_id FROM user_favorite_types WHERE user_id = :userId`
 
-Аналогично для `styles` (`user_favorite_styles`).
+**Результат:** массив UUID
+
+Аналогично для `styles`: `SELECT style_id FROM user_favorite_styles WHERE user_id = :userId` → массив UUID.
 
 ---
 

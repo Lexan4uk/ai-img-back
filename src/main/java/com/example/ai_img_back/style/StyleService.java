@@ -67,8 +67,9 @@ public class StyleService {
         styleRepository.removeFavorite(userId, styleId);
     }
 
-    public List<Style> getFavorites(UUID userId) {
-        return styleRepository.findFavoritesByUserId(userId);
+    public List<UUID> getFavoriteIds(UUID userId) {
+        return styleRepository.findFavoriteIdsByUserId(userId);
     }
+
 
 }

@@ -291,12 +291,12 @@ public class ImageTypeControllerTest extends BaseTest {
                 .andExpect(status().isOk())
                 .andReturn().getResponse();
 
-        ImageTypeDTO[] favorites = objectMapper.readValue(
-                resp.getContentAsString(), ImageTypeDTO[].class);
+        UUID[] favorites = objectMapper.readValue(
+                resp.getContentAsString(), UUID[].class);
 
         boolean found = false;
-        for (ImageTypeDTO f : favorites) {
-            if (f.getId().equals(type.getId())) {
+        for (UUID f : favorites) {
+            if (f.equals(type.getId())) {
                 found = true;
                 break;
             }
@@ -344,11 +344,11 @@ public class ImageTypeControllerTest extends BaseTest {
                 .andExpect(status().isOk())
                 .andReturn().getResponse();
 
-        ImageTypeDTO[] favorites = objectMapper.readValue(
-                resp.getContentAsString(), ImageTypeDTO[].class);
+        UUID[] favorites = objectMapper.readValue(
+                resp.getContentAsString(), UUID[].class);
 
-        for (ImageTypeDTO f : favorites) {
-            assertNotEquals(type.getId(), f.getId(), "Тип не должен быть в избранном");
+        for (UUID f : favorites) {
+            assertNotEquals(type.getId(), f, "Тип не должен быть в избранном");
         }
     }
 
@@ -374,8 +374,8 @@ public class ImageTypeControllerTest extends BaseTest {
                 .andExpect(status().isOk())
                 .andReturn().getResponse();
 
-        ImageTypeDTO[] favorites = objectMapper.readValue(
-                resp.getContentAsString(), ImageTypeDTO[].class);
+        UUID[] favorites = objectMapper.readValue(
+                resp.getContentAsString(), UUID[].class);
 
         assertEquals(0, favorites.length);
     }

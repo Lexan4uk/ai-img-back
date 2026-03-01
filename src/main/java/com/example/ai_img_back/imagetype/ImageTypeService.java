@@ -113,8 +113,9 @@ public class ImageTypeService {
         imageTypeRepository.removeFavorite(userId, imageTypeId);
     }
 
-    public List<ImageType> getFavorites(UUID userId) {
-        return imageTypeRepository.findFavoritesByUserId(userId);
+    public List<UUID> getFavoriteIds(UUID userId) {
+        return imageTypeRepository.findFavoriteIdsByUserId(userId);
     }
+
 
 }

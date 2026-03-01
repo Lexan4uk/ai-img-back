@@ -120,17 +120,15 @@ public class StyleRepository {
                 .addValue("styleId", styleId));
     }
 
-    public List<Style> findFavoritesByUserId(UUID userId) {
+    public List<UUID> findFavoriteIdsByUserId(UUID userId) {
         String sql = """
-                SELECT s.id, s.created_by_user_id, s.name, s.style_prompt, s.created_at
-                FROM styles s
-                JOIN user_favorite_styles ufs ON ufs.style_id = s.id
-                WHERE ufs.user_id = :userId
-                ORDER BY s.name
+                SELECT style_id
+                FROM user_favorite_styles
+                WHERE user_id = :userId
                 """;
+        return jdbcTemplate.queryForList(sql,
+            new MapSqlParameterSource("userId", userId), UUID.class);
+   }
 
-        return jdbcTemplate.query(sql, new MapSqlParameterSource("userId", userId),
-                STYLE_MAPPER);
-    }
 
 }
