@@ -152,7 +152,7 @@ public class GenerationControllerTest extends BaseTest {
 
         GenerateRequest req = new GenerateRequest();
         req.setUserPrompt("с параметрами");
-        req.setGenerationParams("{\"width\": 512, \"height\": 512}");
+        req.setGenerationParams("{\"aspectRatio\": \"16:9\"}");
         req.setImageTypeIds(List.of(type.getId()));
         req.setStyleIds(List.of(style.getId()));
 
@@ -379,13 +379,13 @@ public class GenerationControllerTest extends BaseTest {
 
         GenerateRequest req1 = new GenerateRequest();
         req1.setUserPrompt("одинаковый текст");
-        req1.setGenerationParams("{\"width\": 1024, \"height\": 1024}");
+        req1.setGenerationParams("{\"aspectRatio\": \"1:1\"}");
         req1.setImageTypeIds(List.of(type.getId()));
         req1.setStyleIds(List.of(style.getId()));
 
         GenerateRequest req2 = new GenerateRequest();
         req2.setUserPrompt("одинаковый текст");
-        req2.setGenerationParams("{\"width\": 512, \"height\": 512}");
+        req2.setGenerationParams("{\"aspectRatio\": \"16:9\"}");
         req2.setImageTypeIds(List.of(type.getId()));
         req2.setStyleIds(List.of(style.getId()));
 

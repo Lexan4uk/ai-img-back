@@ -1,19 +1,34 @@
 # Спецификация: генерация изображений, справочники, избранное, галерея
 
+> **Версия:** v2 (BIGSERIAL PK, упрощённая схема)
+
 ## 0) Термины и инварианты
 
 - **Тип (`image_type`)**: общий справочник (виден всем пользователям), имеет `type_prompt` (фрагмент для промпта). Нередактируемый — только создание и удаление. Удалить может только создатель.
 - **Стиль (`style`)**: общий справочник (виден всем пользователям), имеет `style_prompt`. Нередактируемый — только создание и удаление. Удалить может только создатель.
-- **Неопределённый тип / стиль**: системные записи-заглушки с фиксированными UUID. При удалении типа/стиля все связанные `assets` и `generation_requests` переназначаются на неопределённый. Не могут быть удалены. `created_by_user_id = NULL`.
-- **Избранное**: пользователь может добавлять типы и стили в избранное. Используется только `user_id` из таблицы users (таблица users не модифицируется).
-- **Промпт (`prompt`)**: одноразовый снимок, создаётся автоматически при запуске генерации. Содержит текст пользователя + параметры генерации (`generation_params`: width, height и др. через JSONB — масштабируемо). Не переиспользуется, не редактируется.
+- **Неопределённый тип / стиль**: системные записи с фиксированным `id = 1` (BIGSERIAL). При удалении типа/стиля все связанные `assets` и `generation_requests` переназначаются на неопределённый. Не могут быть удалены. `created_by_user_id = NULL`.
+- **Избранное**: пользователь может добавлять типы и стили в избранное. Используется `user_id` из таблицы users.
 - **User prompt**: текст, который вводит пользователь.
-- **Final prompt**: то, что реально уходит в AI = композиция `type_prompt` + `style_prompt` + `user_prompt` + _(общие ограничения/quality блок)_.
-- **Final prompt hash**: `sha256(canonical(final_prompt_snapshot) + canonical(generation_params))` — учитывает и текст, и параметры генерации (одинаковый текст с разным размером = разные картинки).
-- **Дубликат**: в рамках пользователя существует `asset` с тем же `final_prompt_hash`.
+- **Final prompt**: то, что реально уходит в AI = композиция `type_prompt` + `style_prompt` + `user_prompt`.
+- **Final prompt hash**: `SHA-256(final_prompt + "|" + generation_params)` — учитывает и текст, и параметры генерации (одинаковый текст с разным размером = разные картинки).
+- **Дубликат**: **глобально** существует `generation_request` со статусом `DONE` и тем же `final_prompt_hash`.
 - **Overwrite**: если дубль и режим `OVERWRITE` — создаём новый `asset`, старые не трогаем.
-- **Галерея**: выбор типа → все `assets` этого типа от всех пользователей (все стили). Опционально: фильтрация по стилю → `assets` с конкретным сочетанием тип + стиль. Сортировка по времени.
-- **Удаление пользователя**: все данные (assets, типы, стили, промпты, история генераций) остаются. Поля `owner_user_id` / `created_by_user_id` становятся NULL.
+- **Галерея**: выбор типа → все `assets` этого типа от всех пользователей (все стили). Опционально: фильтрация по стилю → `assets` с конкретным сочетанием тип + стиль. Сортировка по ID DESC.
+- **Удаление пользователя**: все данные (assets, типы, стили, история генераций) остаются. Поля `created_by_user_id` / `owner_user_id` становятся NULL. Избранное удаляется (CASCADE).
+
+### Изменения относительно v1
+
+| Что изменилось | v1 | v2 |
+|---------------|----|----|
+| PK/FK | UUID | BIGSERIAL / BIGINT |
+| Таблица `prompts` | Отдельная таблица | Удалена. `user_prompt` и `generation_params` хранятся в `generation_batches` |
+| Снапшоты в assets | `user_prompt_snapshot`, `type_prompt_snapshot`, `style_prompt_snapshot`, `final_prompt_snapshot`, `final_prompt_hash` | Удалены. Asset хранит только `id`, `image_type_id`, `style_id`, `file_uri`, `created_at` |
+| Owner в assets | `owner_user_id` | Удалён (можно восстановить через `generation_requests → batch → owner`) |
+| Статус batch | Хранился в БД (`status`, `started_at`, `finished_at`) | Вычисляется по COUNT реквестов |
+| Дедупликация | В рамках пользователя | Глобальная (по `generation_requests` с `status = 'DONE'`) |
+| `dedupe_mode` | В каждом `generation_request` | В `generation_batches` (один на batch) |
+| Снапшоты в requests | `user_prompt_snapshot`, `final_prompt_snapshot` | Удалены |
+| UserId в заголовке | UUID | Long |
 
 ---
 
@@ -32,32 +47,32 @@
 
 - `INSERT image_types (created_by_user_id = текущий userId)`
 
-**Результат:** новый `type_id`
+**Результат:** новый тип с автоинкрементным `id`
 
 ---
 
 ### 1.2 Удалить тип
 
-**Ввод:** `type_id`
+**Ввод:** `type_id` (Long)
 
 **Проверки:**
 
-- нельзя удалить неопределённый тип (`UNDEFINED_TYPE_ID`)
+- нельзя удалить неопределённый тип (`id = 1`)
 - `created_by_user_id` = текущий пользователь (удалять может только создатель)
 
 **Действия (в одной транзакции):**
 
-1. `UPDATE assets SET image_type_id = UNDEFINED_TYPE_ID WHERE image_type_id = :type_id`
-2. `UPDATE generation_requests SET image_type_id = UNDEFINED_TYPE_ID WHERE image_type_id = :type_id`
+1. `UPDATE assets SET image_type_id = 1 WHERE image_type_id = :type_id`
+2. `UPDATE generation_requests SET image_type_id = 1 WHERE image_type_id = :type_id`
 3. `DELETE FROM image_types WHERE id = :type_id`
 
-_(избранное user_favorite_types удалится автоматически через CASCADE)_
+_(избранное `user_favorite_types` удалится автоматически через CASCADE)_
 
-**Результат:** тип удалён, все связанные assets переведены на неопределённый тип. Снапшоты (`type_prompt_snapshot`) в assets сохраняют оригинальный промпт типа.
+**Результат:** тип удалён, все связанные assets переведены на неопределённый тип.
 
 ---
 
-Аналогично для `styles` (с `UNDEFINED_STYLE_ID`).
+Аналогично для `styles` (с `UNDEFINED_STYLE_ID = 1`).
 
 ---
 
@@ -65,11 +80,11 @@ _(избранное user_favorite_types удалится автоматичес
 
 ### 2.1 Добавить тип в избранное
 
-**Ввод:** `image_type_id`
+**Ввод:** `image_type_id` (Long)
 
 **Проверки:** тип существует
 
-**Действия:** `INSERT INTO user_favorite_types (user_id, image_type_id)`
+**Действия:** `INSERT INTO user_favorite_types (user_id, image_type_id) ON CONFLICT DO NOTHING`
 
 ### 2.2 Убрать тип из избранного
 
@@ -79,25 +94,27 @@ _(избранное user_favorite_types удалится автоматичес
 
 **Действия:** `SELECT image_type_id FROM user_favorite_types WHERE user_id = :userId`
 
-**Результат:** массив UUID
+**Результат:** массив Long
 
-Аналогично для `styles`: `SELECT style_id FROM user_favorite_styles WHERE user_id = :userId` → массив UUID.
+Аналогично для `styles` → массив Long.
 
 ---
 
-## 3) Компоновка final prompt (PromptComposer)
+## 3) Компоновка final prompt
 
 ### 3.1 Входные данные
 
 - `user_prompt` (текст от пользователя)
-- `generation_params` (width, height и др.)
+- `generation_params` (width, height и др. — JSON-строка)
 - `type_prompt` из `image_types`
 - `style_prompt` из `styles`
 
 ### 3.2 Итог
 
-- `final_prompt_snapshot` = строка, которая уйдёт в AI
-- `final_prompt_hash` = `sha256(canonical(final_prompt_snapshot) + canonical(generation_params))`
+```
+final_prompt = [type_prompt]. [style_prompt]. [user_prompt]
+hash = SHA-256(final_prompt + "|" + generation_params)
+```
 
 ---
 
@@ -108,9 +125,9 @@ _(избранное user_favorite_types удалится автоматичес
 `POST /generations`
 
 - `user_prompt` (текст)
-- `generation_params`: `{ "width": 1024, "height": 1024 }` _(масштабируемо)_
-- `image_type_ids[]`
-- `style_ids[]`
+- `generation_params`: `{ "width": 1024, "height": 1024 }` _(JSON-строка, масштабируемо)_
+- `image_type_ids[]` (List\<Long\>)
+- `style_ids[]` (List\<Long\>)
 - `dedupe_mode: SKIP|OVERWRITE`
 - _(optional)_ `provider/model/routing_mode`
 
@@ -119,90 +136,66 @@ _(избранное user_favorite_types удалится автоматичес
 #### Шаг 0. Валидация и загрузка
 
 - Проверить `user_prompt` не пустой, списки ids не пустые.
-- Проверить что `image_type_ids` не содержит `UNDEFINED_TYPE_ID`, `style_ids` не содержит `UNDEFINED_STYLE_ID` — генерация с неопределёнными запрещена.
+- Проверить что `image_type_ids` не содержит `1` (UNDEFINED), `style_ids` не содержит `1` (UNDEFINED) — генерация с неопределёнными запрещена.
 - Загрузить `image_types` по ids, убедиться что существуют.
 - Загрузить `styles` по ids, убедиться что существуют.
-- **Создать prompt** (одноразовый): `INSERT prompts (owner_user_id, text, generation_params)`.
 
 #### Шаг 1. Создать batch
 
 - `INSERT generation_batches`:
   - `owner_user_id`
+  - `user_prompt`, `generation_params`, `dedupe_mode`
   - `provider/model/routing_mode`
-  - `status=RUNNING`, timestamps: `created_at/started_at`
+
+> **Примечание:** В v2 batch не хранит `status` — он вычисляется по COUNT реквестов.
+> Также `user_prompt` и `generation_params` хранятся непосредственно в batch
+> (таблица `prompts` удалена).
 
 #### Шаг 2. Сформировать список задач (requests)
 
 Для каждой пары `(typeId, styleId)` (декартово произведение):
 
-- взять `type_prompt_snapshot = image_types.type_prompt` _(или '')_
-- взять `style_prompt_snapshot = styles.style_prompt` _(или '')_
-- взять `user_prompt_snapshot` = `prompts.text`
-- собрать `final_prompt_snapshot`
+- взять `type_prompt` из `image_types` _(или '')_
+- взять `style_prompt` из `styles` _(или '')_
+- собрать `final_prompt`
 - посчитать `final_prompt_hash` (с учётом `generation_params`)
-- `INSERT generation_requests` со статусом `PENDING`, полями snapshot/hash, `dedupe_mode`, `prompt_id`
-
-В `generation_batches.total_requests` поставить количество.
+- `INSERT generation_requests (batch_id, image_type_id, style_id, final_prompt_hash)` со статусом `PENDING`
 
 #### Шаг 3. Последовательное выполнение (главный цикл v1)
 
 Для каждого `generation_request` по порядку:
 
-1. `UPDATE request`: `status=RUNNING`, `started_at=now()`
+1. **Проверка дубля (глобальная):**
 
-2. **Проверка дубля:**
+   - ищем существующий `generation_request` с `status = 'DONE'` и тем же `final_prompt_hash`
+   - если найдено и `dedupe_mode = SKIP`:
+     - `UPDATE request`: `status = SKIPPED`
+     - перейти к следующему request
+   - если `dedupe_mode = OVERWRITE`: продолжаем (создадим новый asset)
 
-- ищем существующий `asset` в рамках пользователя по `final_prompt_hash`
-- если найдено:
-  - `UPDATE request`: `dedupe_result='DUPLICATE'`
-  - если `dedupe_mode=SKIP`:
-    - `UPDATE request`: `status=SKIPPED`, `finished_at=now()`
-    - увеличить счётчики batch (`done_requests++`)
-    - перейти к следующему request
-  - если `dedupe_mode=OVERWRITE`: продолжаем _(просто создадим новый asset)_
-- если не найдено:
-  - `UPDATE request`: `dedupe_result='NEW'`
+2. `UPDATE request`: `status = RUNNING`
 
 3. **Вызов AI (один запрос → один ответ):**
 
-- `AiClient.generateImage(final_prompt_snapshot, generation_params, ...)`
-- получить `bytes/uri` и `meta`
+   - `AiClient.generateImage(final_prompt, generation_params, ...)`
+   - получить `file_uri`
 
-Если ошибка:
-
-- `UPDATE request`: `status=FAILED`, `error_message`, `finished_at=now()`
-- `batch.failed_requests++`
-- продолжить со следующим _(или валить batch целиком — это отдельное решение)_
+   Если ошибка:
+   - `UPDATE request`: `status = FAILED`, `error_message`
+   - продолжить со следующим
 
 4. **Сохранение asset:**
 
-- сохранить файл на диск → `file_uri`
-- `INSERT assets`:
-  - `owner_user_id`
-  - `image_type_id`, `style_id`, `prompt_id`
-  - `user_prompt_snapshot/type_prompt_snapshot/style_prompt_snapshot`
-  - `final_prompt_snapshot/final_prompt_hash`
-  - `file_uri/provider/model/meta`
-- `UPDATE request`:
-  - `status=DONE`, `created_asset_id=assets.id`, `finished_at=now()`
-- `batch.done_requests++`
+   - `INSERT assets (image_type_id, style_id, file_uri)`
+   - `UPDATE request`: `status = DONE`, `created_asset_id = assets.id`
 
-#### Шаг 4. Завершить batch
-
-`UPDATE generation_batches`:
-
-- `status`:
-  - `DONE`, если нет `failed` _(или если failed допустимы — всё равно DONE)_
-  - `FAILED`, если решили "любая ошибка = failed batch"
-- `finished_at=now()`
-
-#### Шаг 5. Ответ API
+#### Шаг 4. Ответ API
 
 Вернуть массив результатов по каждой паре _(type, style)_:
 
 - `status: DONE/SKIPPED/FAILED`
-- `asset_id + file_uri` _(если DONE)_
-- `error_message` _(если FAILED)_
+- `createdAssetId` (Long, если DONE)
+- `errorMessage` (если FAILED)
 
 ---
 
@@ -222,45 +215,44 @@ _(избранное user_favorite_types удалится автоматичес
 - `GET /assets?imageTypeId=T` — все ассеты типа **T** (все стили)
 - `GET /assets?imageTypeId=T&styleId=S` — ассеты типа **T** и стиля **S**
 
-От **всех пользователей**, сортировка по `created_at DESC`.
+От **всех пользователей**, сортировка по `id DESC`.
 
 ### 5.3 Отображение
 
 Показывается:
 
-- превью изображения
-- итоговый промпт (`final_prompt_snapshot`)
+- превью изображения (`file_uri`)
+- название стиля (через `style_id` → `styles.name`)
 - дата создания
-- автор (`owner_user_id`)
+
+> **Примечание:** В v2 asset не хранит `owner_user_id` и `final_prompt_snapshot`.
+> При необходимости автора можно восстановить через цепочку
+> `asset.id → generation_requests.created_asset_id → batch → owner_user_id`.
 
 ---
 
 ## 6) Поведение при удалении типа/стиля
 
 - Удалили тип/стиль:
-  - все связанные `assets` переключаются на неопределённый тип/стиль
-  - `type_prompt_snapshot`/`style_prompt_snapshot` в assets сохраняют оригинальные промпты
+  - все связанные `assets` переключаются на неопределённый тип/стиль (`id = 1`)
+  - все связанные `generation_requests` переключаются на `id = 1`
   - в галерее эти assets появятся в секции «Неопределённый»
   - записи в избранном удаляются автоматически (CASCADE)
-- Снапшоты гарантируют, что `final_prompt_hash` и `final_prompt_snapshot` остаются валидными — они не зависят от текущего состояния справочника.
 
 ---
 
 ## 7) Поведение при удалении пользователя
 
 - Все данные пользователя **остаются**:
-  - `assets.owner_user_id` → NULL
   - `image_types.created_by_user_id` → NULL (тип остаётся общим, но удалить его никто не сможет)
   - `styles.created_by_user_id` → NULL (аналогично)
-  - `prompts.owner_user_id` → NULL
   - `generation_batches.owner_user_id` → NULL
-  - `generation_requests.owner_user_id` → NULL
 - Избранное пользователя **удаляется** (CASCADE).
 
 ---
 
 ## 8) Запрет одинаковых типов/стилей
 
-Запрещаем одинаковые `name` (case-insensitive) глобально.
+Запрещаем одинаковые `name` (case-insensitive) глобально через индекс `LOWER(name)`.
 
 Это предотвращает дубликаты в UI.

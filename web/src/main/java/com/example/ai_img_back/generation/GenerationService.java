@@ -1,13 +1,15 @@
 package com.example.ai_img_back.generation;
 
+import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.util.ArrayList;
 import java.util.HexFormat;
 import java.util.List;
-import java.util.UUID;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -19,6 +21,11 @@ import com.example.ai_img_back.clientutils.enums.RequestStatus;
 import com.example.ai_img_back.clientutils.enums.RoutingMode;
 import com.example.ai_img_back.imagetype.ImageType;
 import com.example.ai_img_back.imagetype.ImageTypeService;
+import com.example.ai_img_back.provider.AiProperties;
+import com.example.ai_img_back.provider.AiProviderException;
+import com.example.ai_img_back.provider.ImageAiProvider;
+import com.example.ai_img_back.provider.ImageStorageService;
+import com.example.ai_img_back.provider.ProviderRouter;
 import com.example.ai_img_back.style.Style;
 import com.example.ai_img_back.style.StyleService;
 
@@ -29,11 +36,19 @@ import lombok.RequiredArgsConstructor;
 @Transactional
 public class GenerationService {
 
+    private static final Logger log = LoggerFactory.getLogger(GenerationService.class);
+
     private final ImageTypeService imageTypeService;
     private final StyleService styleService;
     private final AssetRepository assetRepository;
     private final GenerationBatchRepository batchRepository;
     private final GenerationRequestRepository requestRepository;
+    private final ProviderRouter providerRouter;
+    private final ImageStorageService imageStorageService;
+    private final AiProperties aiProperties;
+
+    /** Aspect ratio по умолчанию: 1:1 (квадратное изображение) */
+    private static final String DEFAULT_ASPECT_RATIO = "1:1";
 
     public List<GenerationRequest> generate(Long currentUserId, GenerateRequest request) {
 
@@ -74,15 +89,21 @@ public class GenerationService {
         String generationParams = request.getGenerationParams() != null
                 ? request.getGenerationParams() : "{}";
 
+        String providerName = request.getProvider() != null
+                ? request.getProvider() : aiProperties.getDefaultProvider();
+
         GenerationBatch batch = batchRepository.create(
                 currentUserId,
                 request.getUserPrompt().trim(),
                 generationParams,
                 dedupeMode,
-                request.getProvider() != null ? request.getProvider() : "openai",
+                providerName,
                 request.getModel(),
                 request.getRoutingMode() != null ? request.getRoutingMode() : RoutingMode.DIRECT
         );
+
+        log.info("Batch #{}: начата генерация, {} типов × {} стилей = {} запросов, provider={}",
+                batch.getId(), types.size(), styles.size(), types.size() * styles.size(), providerName);
 
         // === Шаг 2: Сформировать request-ы (декартово произведение) ===
 
@@ -105,9 +126,38 @@ public class GenerationService {
             }
         }
 
-        // === Шаг 3: Последовательное выполнение ===
+        // === Шаг 3: Выбрать провайдер ===
+
+        ImageAiProvider provider;
+        try {
+            provider = providerRouter.resolve(providerName);
+        } catch (AiProviderException e) {
+            // Если провайдер недоступен — помечаем все как FAILED
+            for (GenerationRequest genReq : requests) {
+                requestRepository.markFailed(genReq.getId(), e.getMessage());
+                genReq.setStatus(RequestStatus.FAILED);
+                genReq.setErrorMessage(e.getMessage());
+            }
+            return requests;
+        }
+
+        // Парсим aspect ratio из generationParams (если указан)
+        String aspectRatio = parseStringParam(generationParams, "aspectRatio", DEFAULT_ASPECT_RATIO);
+
+        // === Шаг 4: Последовательное выполнение ===
+
+        boolean authFailed = false;
 
         for (GenerationRequest genReq : requests) {
+
+            // При ошибке авторизации — остальные тоже не пройдут
+            if (authFailed) {
+                requestRepository.markFailed(genReq.getId(),
+                        "Генерация остановлена: ошибка авторизации провайдера");
+                genReq.setStatus(RequestStatus.FAILED);
+                genReq.setErrorMessage("Генерация остановлена: ошибка авторизации провайдера");
+                continue;
+            }
 
             // Проверка дедупликации
             boolean isDuplicate = assetRepository.existsByHash(genReq.getFinalPromptHash());
@@ -115,30 +165,75 @@ public class GenerationService {
             if (isDuplicate && dedupeMode == DedupeMode.SKIP) {
                 requestRepository.markSkipped(genReq.getId());
                 genReq.setStatus(RequestStatus.SKIPPED);
+                log.info("Request #{}: SKIPPED (дубликат, hash: {}...)",
+                        genReq.getId(), genReq.getFinalPromptHash().substring(0, 8));
                 continue;
             }
 
             requestRepository.markRunning(genReq.getId());
 
             try {
-                // Вызов AI (заглушка)
-                AiResult aiResult = callAiProvider(genReq.getFinalPromptHash(), currentUserId);
+                // Собираем finalPrompt для отправки в AI
+                ImageType type = types.stream()
+                        .filter(t -> t.getId().equals(genReq.getImageTypeId()))
+                        .findFirst().orElseThrow();
+                Style style = styles.stream()
+                        .filter(s -> s.getId().equals(genReq.getStyleId()))
+                        .findFirst().orElseThrow();
 
-                // Сохранить asset
+                String typePrompt = type.getTypePrompt() != null ? type.getTypePrompt() : "";
+                String stylePrompt = style.getStylePrompt() != null ? style.getStylePrompt() : "";
+                String finalPrompt = composeFinalPrompt(typePrompt, stylePrompt, batch.getUserPrompt());
+
+                log.debug("Request #{}: отправлен к {} (hash: {}..., ratio: {})",
+                        genReq.getId(), provider.providerName(),
+                        genReq.getFinalPromptHash().substring(0, 8), aspectRatio);
+
+                // Вызов AI-провайдера
+                byte[] imageBytes = provider.generate(finalPrompt, aspectRatio);
+
+                // Сохранение на диск
+                String fileUri = imageStorageService.save(imageBytes);
+
+                // Сохранить asset в БД
                 Asset asset = assetRepository.create(new Asset()
                         .setImageTypeId(genReq.getImageTypeId())
                         .setStyleId(genReq.getStyleId())
-                        .setFileUri(aiResult.fileUri())
+                        .setFileUri(fileUri)
                 );
 
                 requestRepository.markDone(genReq.getId(), asset.getId());
                 genReq.setStatus(RequestStatus.DONE);
                 genReq.setCreatedAssetId(asset.getId());
 
+                log.info("Request #{}: DONE, asset #{}, файл {}",
+                        genReq.getId(), asset.getId(), fileUri);
+
+            } catch (AiProviderException e) {
+                requestRepository.markFailed(genReq.getId(), e.getMessage());
+                genReq.setStatus(RequestStatus.FAILED);
+                genReq.setErrorMessage(e.getMessage());
+                log.warn("Request #{}: FAILED — {}", genReq.getId(), e.getMessage());
+
+                // Если 401/403/402 — нет смысла продолжать
+                if (e.getHttpStatus() == 401 || e.getHttpStatus() == 403 || e.getHttpStatus() == 402) {
+                    authFailed = true;
+                    log.error("Ошибка авторизации ({}) — остальные запросы batch будут отменены",
+                            e.getHttpStatus());
+                }
+
+            } catch (IOException e) {
+                String msg = "Ошибка сохранения файла: " + e.getMessage();
+                requestRepository.markFailed(genReq.getId(), msg);
+                genReq.setStatus(RequestStatus.FAILED);
+                genReq.setErrorMessage(msg);
+                log.error("Request #{}: {}", genReq.getId(), msg, e);
+
             } catch (Exception e) {
                 requestRepository.markFailed(genReq.getId(), e.getMessage());
                 genReq.setStatus(RequestStatus.FAILED);
                 genReq.setErrorMessage(e.getMessage());
+                log.error("Request #{}: неожиданная ошибка", genReq.getId(), e);
             }
         }
 
@@ -149,16 +244,16 @@ public class GenerationService {
 
     // ===== Вспомогательные методы =====
 
+    /**
+     * Собирает финальный промпт по шаблону из ai.prompt-template.
+     * Переменные: {type}, {style}, {prompt}
+     */
     private String composeFinalPrompt(String typePrompt, String stylePrompt, String userPrompt) {
-        StringBuilder sb = new StringBuilder();
-        if (!typePrompt.isBlank()) {
-            sb.append(typePrompt).append(". ");
-        }
-        if (!stylePrompt.isBlank()) {
-            sb.append(stylePrompt).append(". ");
-        }
-        sb.append(userPrompt);
-        return sb.toString().trim();
+        return aiProperties.getPromptTemplate()
+                .replace("{type}", typePrompt.isBlank() ? "любой" : typePrompt)
+                .replace("{style}", stylePrompt.isBlank() ? "любой" : stylePrompt)
+                .replace("{prompt}", userPrompt)
+                .trim();
     }
 
     private String computeHash(String finalPrompt, String generationParams) {
@@ -172,11 +267,31 @@ public class GenerationService {
         }
     }
 
-    record AiResult(String fileUri, String provider, String model) {}
+    /**
+     * Простой парсер строкового параметра из JSON-строки.
+     * Ищет "key": "value" и возвращает value.
+     */
+    private String parseStringParam(String json, String key, String defaultValue) {
+        try {
+            String searchKey = "\"" + key + "\"";
+            int idx = json.indexOf(searchKey);
+            if (idx < 0) return defaultValue;
 
-    private AiResult callAiProvider(String finalPromptHash, Long ownerUserId) {
-        // TODO: заменить на реальный вызов AI API
-        String fakeUri = "generated/" + ownerUserId + "/" + UUID.randomUUID() + ".png";
-        return new AiResult(fakeUri, "stub", "stub-model");
+            int colonIdx = json.indexOf(':', idx + searchKey.length());
+            if (colonIdx < 0) return defaultValue;
+
+            // Ищем открывающую кавычку
+            int quoteStart = json.indexOf('"', colonIdx + 1);
+            if (quoteStart < 0) return defaultValue;
+
+            // Ищем закрывающую кавычку
+            int quoteEnd = json.indexOf('"', quoteStart + 1);
+            if (quoteEnd < 0) return defaultValue;
+
+            String value = json.substring(quoteStart + 1, quoteEnd).trim();
+            return value.isEmpty() ? defaultValue : value;
+        } catch (Exception e) {
+            return defaultValue;
+        }
     }
 }

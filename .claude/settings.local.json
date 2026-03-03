@@ -8,7 +8,23 @@
       "Bash(mvn test -pl web -Dtest=\"UserControllerTest#createUser_withAllFields_shouldReturnCreatedUser\")",
       "Bash(mvn test -pl web -Dtest=\"UserControllerTest#createUser_withAllFields_shouldReturnCreatedUser\" -e)",
       "Bash(mvn clean test -pl web -Dtest=\"UserControllerTest#createUser_withAllFields_shouldReturnCreatedUser\")",
-      "Bash(mvn clean test)"
+      "Bash(mvn clean test)",
+      "Bash(./gradlew composeApp:compileKotlinJvm)",
+      "Bash(.gradlew.bat composeApp:build)",
+      "Bash(cmd /c \"cd /d D:\\\\vse\\\\AndroidStudioProjects\\\\aiimageclient && gradlew.bat composeApp:build\")",
+      "Bash(cmd /c \"D: && cd D:\\\\vse\\\\AndroidStudioProjects\\\\aiimageclient && gradlew.bat composeApp:build\")",
+      "Bash(powershell -Command \"Set-Location ''D:\\\\vse\\\\AndroidStudioProjects\\\\aiimageclient''; .\\\\gradlew.bat composeApp:build 2>&1 | Select-Object -Last 20\")",
+      "Bash(powershell -Command \"Set-Location ''C:\\\\Users\\\\alkat\\\\Desktop\\\\ai-img-back''; mvn compile -pl web -am 2>&1 | Select-Object -Last 40\")",
+      "Bash(powershell -Command \"Set-Location ''C:\\\\Users\\\\alkat\\\\Desktop\\\\ai-img-back''; mvn test -pl web 2>&1 | Select-Object -Last 40\")",
+      "Bash(powershell -Command \"Set-Location ''C:\\\\Users\\\\alkat\\\\Desktop\\\\ai-img-back''; mvn test -pl web -am 2>&1 | Select-Object -Last 30\")",
+      "Bash(powershell -Command \"Set-Location ''C:\\\\Users\\\\alkat\\\\Desktop\\\\ai-img-back''; mvn test -pl web -am 2>&1 | Select-Object -Last 15\")",
+      "Bash(powershell -Command \"Set-Location ''C:\\\\Users\\\\alkat\\\\Desktop\\\\ai-img-back''; mvn test -pl web -am 2>&1 | Select-Object -Last 12\")",
+      "Bash(./gradlew :web:build)",
+      "Bash(cmd.exe /c \"mvnw.cmd -pl web -am clean test\")",
+      "Bash(cmd.exe /c \"mvnw.cmd -pl web -am clean test 2>&1\")",
+      "Bash(\"C:/Users/alkat/Desktop/ai-img-back/mvnw.cmd\" -pl web -am clean test)",
+      "Bash(git check-ignore -v \"web/src/main/resources/application-local.properties\")",
+      "Bash(xargs grep -l \"DALL-E\\\\|Gemini\\\\|gpt-4v\")"
     ]
   }
 }
