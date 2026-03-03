@@ -1,0 +1,126 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+    xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+    xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+    xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+        http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-latest.xsd">
+
+    <!-- ========================= -->
+    <!-- SCHEMA v2: BIGSERIAL PKs  -->
+    <!-- ========================= -->
+
+    <changeSet id="v2-users" author="ai-img-back">
+        <sql>
+            CREATE TABLE users (
+                id         BIGSERIAL    PRIMARY KEY,
+                email      TEXT         NOT NULL,
+                display_name TEXT       NOT NULL,
+                CONSTRAINT uq_users_email UNIQUE (email)
+            );
+        </sql>
+    </changeSet>
+
+    <changeSet id="v2-image-types" author="ai-img-back">
+        <sql>
+            CREATE TABLE image_types (
+                id                  BIGSERIAL PRIMARY KEY,
+                created_by_user_id  BIGINT    REFERENCES users(id) ON DELETE SET NULL,
+                name                TEXT      NOT NULL,
+                type_prompt         TEXT
+            );
+            CREATE UNIQUE INDEX uq_image_types_name ON image_types(LOWER(name));
+            CREATE INDEX ix_image_types_created_by ON image_types(created_by_user_id);
+
+            INSERT INTO image_types (name, type_prompt) VALUES ('Неопределённый', NULL);
+        </sql>
+    </changeSet>
+
+    <changeSet id="v2-styles" author="ai-img-back">
+        <sql>
+            CREATE TABLE styles (
+                id                  BIGSERIAL PRIMARY KEY,
+                created_by_user_id  BIGINT    REFERENCES users(id) ON DELETE SET NULL,
+                name                TEXT      NOT NULL,
+                style_prompt        TEXT
+            );
+            CREATE UNIQUE INDEX uq_styles_name ON styles(LOWER(name));
+            CREATE INDEX ix_styles_created_by ON styles(created_by_user_id);
+
+            INSERT INTO styles (name, style_prompt) VALUES ('Неопределённый', NULL);
+        </sql>
+    </changeSet>
+
+    <changeSet id="v2-favorites" author="ai-img-back">
+        <sql>
+            CREATE TABLE user_favorite_types (
+                user_id        BIGINT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+                image_type_id  BIGINT NOT NULL REFERENCES image_types(id) ON DELETE CASCADE,
+                PRIMARY KEY (user_id, image_type_id)
+            );
+            CREATE INDEX ix_fav_types_type ON user_favorite_types(image_type_id);
+
+            CREATE TABLE user_favorite_styles (
+                user_id   BIGINT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+                style_id  BIGINT NOT NULL REFERENCES styles(id) ON DELETE CASCADE,
+                PRIMARY KEY (user_id, style_id)
+            );
+            CREATE INDEX ix_fav_styles_style ON user_favorite_styles(style_id);
+        </sql>
+    </changeSet>
+
+    <changeSet id="v2-assets" author="ai-img-back">
+        <sql>
+            CREATE TABLE assets (
+                id             BIGSERIAL    PRIMARY KEY,
+                image_type_id  BIGINT       NOT NULL REFERENCES image_types(id),
+                style_id       BIGINT       NOT NULL REFERENCES styles(id),
+                file_uri       TEXT         NOT NULL,
+                created_at     TIMESTAMPTZ  NOT NULL DEFAULT NOW()
+            );
+            CREATE INDEX ix_assets_type ON assets(image_type_id);
+            CREATE INDEX ix_assets_style ON assets(style_id);
+            CREATE INDEX ix_assets_type_style ON assets(image_type_id, style_id, id DESC);
+        </sql>
+    </changeSet>
+
+    <changeSet id="v2-generation-batches" author="ai-img-back">
+        <sql>
+            CREATE TABLE generation_batches (
+                id               BIGSERIAL PRIMARY KEY,
+                owner_user_id    BIGINT    REFERENCES users(id) ON DELETE SET NULL,
+                user_prompt      TEXT      NOT NULL,
+                generation_params JSONB    NOT NULL DEFAULT '{}',
+                dedupe_mode      TEXT      NOT NULL DEFAULT 'SKIP',
+                provider         TEXT      NOT NULL,
+                model            TEXT,
+                routing_mode     TEXT      NOT NULL,
+                CONSTRAINT ck_batches_dedupe  CHECK (dedupe_mode  IN ('SKIP', 'OVERWRITE')),
+                CONSTRAINT ck_batches_routing CHECK (routing_mode IN ('DIRECT', 'PROXY'))
+            );
+            CREATE INDEX ix_batches_owner ON generation_batches(owner_user_id);
+        </sql>
+    </changeSet>
+
+    <changeSet id="v2-generation-requests" author="ai-img-back">
+        <sql>
+            CREATE TABLE generation_requests (
+                id                BIGSERIAL   PRIMARY KEY,
+                batch_id          BIGINT      NOT NULL REFERENCES generation_batches(id) ON DELETE CASCADE,
+                image_type_id     BIGINT      NOT NULL REFERENCES image_types(id),
+                style_id          BIGINT      NOT NULL REFERENCES styles(id),
+                final_prompt_hash TEXT        NOT NULL,
+                status            TEXT        NOT NULL DEFAULT 'PENDING',
+                created_asset_id  BIGINT      REFERENCES assets(id),
+                error_message     TEXT,
+                created_at        TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                CONSTRAINT ck_requests_status CHECK (status IN ('PENDING','RUNNING','DONE','FAILED','SKIPPED'))
+            );
+            CREATE INDEX ix_requests_batch ON generation_requests(batch_id);
+            CREATE INDEX ix_requests_type  ON generation_requests(image_type_id);
+            CREATE INDEX ix_requests_style ON generation_requests(style_id);
+            CREATE INDEX ix_requests_asset ON generation_requests(created_asset_id);
+            CREATE INDEX ix_requests_hash  ON generation_requests(final_prompt_hash);
+        </sql>
+    </changeSet>
+
+</databaseChangeLog>

@@ -28,7 +28,7 @@ import com.example.ai_img_back.clientutils.dto.UserRequest;
  *   3. Проверить HTTP-статус (.andExpect(status().isOk()))
  *   4. Распарсить ответ (objectMapper.readValue)
  *   5. Проверить поля (assertEquals, assertNotNull)
- * 
+ *
  * ─── Независимость тестов ───
  * Каждый тест создаёт свои данные и не зависит от других.
  * Используем рандомные email чтобы не конфликтовать.
@@ -70,15 +70,6 @@ public class UserControllerTest extends BaseTest {
 
     @Test
     void createUser_withAllFields_shouldReturnCreatedUser() throws Exception {
-        /*
-         * Что тестируем: POST /users с полным набором полей.
-         *
-         * Что проверяем:
-         * - HTTP 200
-         * - В ответе есть id (UUID, сгенерированный БД)
-         * - Поля совпадают с тем, что отправили
-         * - createdAt заполнен (БД поставила DEFAULT now())
-         */
         UserRequest request = new UserRequest();
         request.setEmail("create-all-fields-" + UUID.randomUUID() + "@test.ru");
         request.setDisplayName("Тест Полный");
@@ -96,17 +87,10 @@ public class UserControllerTest extends BaseTest {
         assertNotNull(dto.getId());
         assertEquals(request.getEmail(), dto.getEmail());
         assertEquals("Тест Полный", dto.getDisplayName());
-        assertNotNull(dto.getCreatedAt());
     }
 
     @Test
     void createUser_duplicateEmail_shouldReturn400() throws Exception {
-        /*
-         * Что тестируем: UNIQUE constraint на email.
-         *
-         * Паттерн: создаём пользователя → пытаемся создать второго с тем же email → 400.
-         * DataIntegrityViolationException → GlobalExceptionHandler → 400.
-         */
         String sameEmail = "duplicate-" + UUID.randomUUID() + "@test.ru";
 
         UserRequest request = new UserRequest();
@@ -133,12 +117,6 @@ public class UserControllerTest extends BaseTest {
 
     @Test
     void getById_existingUser_shouldReturnUser() throws Exception {
-        /*
-         * Что тестируем: GET /users/{id} — получить пользователя.
-         *
-         * Паттерн: создаём → получаем → проверяем что это тот же.
-         * Тест независим — создаёт данные сам.
-         */
         UserDTO created = createUser("Для Получения");
 
         MockHttpServletResponse response = mvc.perform(
@@ -155,13 +133,7 @@ public class UserControllerTest extends BaseTest {
 
     @Test
     void getById_nonExistent_shouldReturn404() throws Exception {
-        /*
-         * Что тестируем: несуществующий UUID → 404.
-         *
-         * UUID.randomUUID() гарантированно не существует в БД.
-         * EntityNotFoundException → GlobalExceptionHandler → 404.
-         */
-        mvc.perform(get("/users/{id}", UUID.randomUUID()))
+        mvc.perform(get("/users/{id}", 999999L))
                 .andExpect(status().isNotFound());
     }
 
@@ -171,12 +143,6 @@ public class UserControllerTest extends BaseTest {
 
     @Test
     void getAll_shouldReturnNonEmptyList() throws Exception {
-        /*
-         * Что тестируем: GET /users — список.
-         *
-         * Создаём пользователя, потом запрашиваем список
-         * и проверяем что он непустой и содержит нашего.
-         */
         UserDTO created = createUser("Для Списка");
 
         MockHttpServletResponse response = mvc.perform(get("/users"))
@@ -184,12 +150,6 @@ public class UserControllerTest extends BaseTest {
                 .andReturn()
                 .getResponse();
 
-        /*
-         * Парсим массив JSON → массив DTO.
-         *
-         * objectMapper.readValue(json, UserDTO[].class) — парсит JSON-массив.
-         * В NestJS: JSON.parse(res.text) и всё. В Java нужно указать тип явно.
-         */
         UserDTO[] users = objectMapper.readValue(
                 response.getContentAsString(), UserDTO[].class);
 
@@ -212,12 +172,6 @@ public class UserControllerTest extends BaseTest {
 
     @Test
     void delete_existingUser_shouldReturn200() throws Exception {
-        /*
-         * Что тестируем: DELETE /users/{id}.
-         *
-         * Паттерн: создаём → удаляем → проверяем что GET на него даёт 404.
-         * Полный цикл life-time сущности.
-         */
         UserDTO created = createUser("Для Удаления");
 
         // Удаляем
@@ -231,10 +185,7 @@ public class UserControllerTest extends BaseTest {
 
     @Test
     void delete_nonExistent_shouldReturn404() throws Exception {
-        /*
-         * Что тестируем: удаление несуществующего → 404.
-         */
-        mvc.perform(delete("/users/{id}", UUID.randomUUID()))
+        mvc.perform(delete("/users/{id}", 999999L))
                 .andExpect(status().isNotFound());
     }
 }

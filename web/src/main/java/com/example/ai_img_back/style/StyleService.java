@@ -1,7 +1,6 @@
 package com.example.ai_img_back.style;
 
 import java.util.List;
-import java.util.UUID;
 
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -15,23 +14,18 @@ import lombok.RequiredArgsConstructor;
 @Transactional
 public class StyleService {
 
-    /**
-     * Фиксированный UUID неопределённого стиля.
-     * Совпадает с seed в changeset-2.xml.
-     */
-    public static final UUID UNDEFINED_STYLE_ID =
-            UUID.fromString("00000000-0000-0000-0000-000000000002");
+    public static final Long UNDEFINED_STYLE_ID = 1L;
 
     private final StyleRepository styleRepository;
 
-    public Style create(UUID currentUserId, String name, String stylePrompt) {
+    public Style create(Long currentUserId, String name, String stylePrompt) {
         if (name == null || name.isBlank()) {
             throw new IllegalArgumentException("Название стиля обязательно");
         }
         return styleRepository.create(currentUserId, name.trim(), stylePrompt);
     }
 
-    public Style getById(UUID id) {
+    public Style getById(Long id) {
         return styleRepository.findById(id)
                 .orElseThrow(() -> new EntityNotFoundException(
                         "Стиль с id " + id + " не найден"
@@ -42,7 +36,7 @@ public class StyleService {
         return styleRepository.findAll();
     }
 
-    public void delete(UUID id, UUID currentUserId) {
+    public void delete(Long id, Long currentUserId) {
         Style style = getById(id);
 
         if (UNDEFINED_STYLE_ID.equals(id)) {
@@ -55,21 +49,19 @@ public class StyleService {
 
         styleRepository.reassignAssets(id, UNDEFINED_STYLE_ID);
         styleRepository.reassignGenerationRequests(id, UNDEFINED_STYLE_ID);
-
         styleRepository.delete(id);
     }
-		public void addFavorite(UUID userId, UUID styleId) {
+
+    public void addFavorite(Long userId, Long styleId) {
         getById(styleId);
         styleRepository.addFavorite(userId, styleId);
     }
 
-    public void removeFavorite(UUID userId, UUID styleId) {
+    public void removeFavorite(Long userId, Long styleId) {
         styleRepository.removeFavorite(userId, styleId);
     }
 
-    public List<UUID> getFavoriteIds(UUID userId) {
+    public List<Long> getFavoriteIds(Long userId) {
         return styleRepository.findFavoriteIdsByUserId(userId);
     }
-
-
 }

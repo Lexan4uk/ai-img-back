@@ -53,7 +53,7 @@ public class AssetControllerTest extends BaseTest {
         return objectMapper.readValue(resp.getContentAsString(), UserDTO.class);
     }
 
-    private ImageTypeDTO createType(UUID userId, String name) throws Exception {
+    private ImageTypeDTO createType(Long userId, String name) throws Exception {
         ImageTypeRequest req = new ImageTypeRequest();
         req.setName(name);
         req.setTypePrompt("tp-" + name);
@@ -69,7 +69,7 @@ public class AssetControllerTest extends BaseTest {
         return objectMapper.readValue(resp.getContentAsString(), ImageTypeDTO.class);
     }
 
-    private StyleDTO createStyle(UUID userId, String name) throws Exception {
+    private StyleDTO createStyle(Long userId, String name) throws Exception {
         StyleRequest req = new StyleRequest();
         req.setName(name);
         req.setStylePrompt("sp-" + name);
@@ -86,7 +86,7 @@ public class AssetControllerTest extends BaseTest {
     }
 
     /** Запустить генерацию 1 type × 1 style */
-    private void generateOne(UUID userId, UUID typeId, UUID styleId, String prompt) throws Exception {
+    private void generateOne(Long userId, Long typeId, Long styleId, String prompt) throws Exception {
         GenerateRequest req = new GenerateRequest();
         req.setUserPrompt(prompt);
         req.setImageTypeIds(List.of(typeId));
@@ -100,7 +100,7 @@ public class AssetControllerTest extends BaseTest {
     }
 
     /** Запросить галерею */
-    private AssetDTO[] getGallery(UUID typeId, UUID styleId) throws Exception {
+    private AssetDTO[] getGallery(Long typeId, Long styleId) throws Exception {
         MockHttpServletResponse resp = mvc.perform(
                 get("/assets")
                         .param("imageTypeId", typeId.toString())
@@ -110,8 +110,9 @@ public class AssetControllerTest extends BaseTest {
 
         return objectMapper.readValue(resp.getContentAsString(), AssetDTO[].class);
     }
+
     /** Запросить галерею типа (без стиля) */
-    private AssetDTO[] getGalleryByType(UUID typeId) throws Exception {
+    private AssetDTO[] getGalleryByType(Long typeId) throws Exception {
         MockHttpServletResponse resp = mvc.perform(
                 get("/assets")
                         .param("imageTypeId", typeId.toString()))
@@ -138,8 +139,6 @@ public class AssetControllerTest extends BaseTest {
         assertEquals(1, assets.length);
         assertEquals(type.getId(), assets[0].getImageTypeId());
         assertEquals(style.getId(), assets[0].getStyleId());
-        assertEquals(user.getId(), assets[0].getOwnerUserId());
-        assertTrue(assets[0].getFinalPromptSnapshot().contains("картинка для галереи"));
         assertNotNull(assets[0].getFileUri());
         assertNotNull(assets[0].getCreatedAt());
     }
@@ -161,11 +160,6 @@ public class AssetControllerTest extends BaseTest {
 
     @Test
     void gallery_differentTypeStyle_shouldNotMix() throws Exception {
-        /*
-         * Генерируем для пары (typeA, styleA).
-         * Запрашиваем галерею для (typeA, styleB) → пусто.
-         * Фильтрация работает.
-         */
         UserDTO user = createUser();
         ImageTypeDTO typeA = createType(user.getId(), "MixA-" + UUID.randomUUID());
         StyleDTO styleA = createStyle(user.getId(), "MixA-" + UUID.randomUUID());
@@ -200,16 +194,6 @@ public class AssetControllerTest extends BaseTest {
         AssetDTO[] assets = getGallery(type.getId(), style.getId());
 
         assertEquals(2, assets.length);
-
-        // Проверяем что оба пользователя представлены
-        boolean hasUser1 = false;
-        boolean hasUser2 = false;
-        for (AssetDTO a : assets) {
-            if (user1.getId().equals(a.getOwnerUserId())) hasUser1 = true;
-            if (user2.getId().equals(a.getOwnerUserId())) hasUser2 = true;
-        }
-        assertTrue(hasUser1, "Должна быть картинка от user1");
-        assertTrue(hasUser2, "Должна быть картинка от user2");
     }
 
     @Test
@@ -223,16 +207,13 @@ public class AssetControllerTest extends BaseTest {
 
         assertEquals(0, assets.length);
     }
+
     // ═══════════════════════════════════════════
     // Gallery by type (без styleId)
     // ═══════════════════════════════════════════
 
     @Test
     void galleryByType_multipleStyles_shouldReturnAll() throws Exception {
-        /*
-         * 1 тип × 3 стиля = 3 ассета.
-         * GET /assets?imageTypeId=... (без styleId) → все 3.
-         */
         UserDTO user = createUser();
         ImageTypeDTO type = createType(user.getId(), "ByType-" + UUID.randomUUID());
         StyleDTO s1 = createStyle(user.getId(), "BTS1-" + UUID.randomUUID());

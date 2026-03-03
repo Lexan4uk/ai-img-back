@@ -12,7 +12,6 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 
 import java.util.UUID;
 
-
 import org.junit.jupiter.api.Test;
 import org.springframework.http.MediaType;
 import org.springframework.mock.web.MockHttpServletResponse;
@@ -31,7 +30,7 @@ import com.example.ai_img_back.clientutils.dto.UserRequest;
  *    mvc.perform(post(...).header("UserId", userId.toString()))
  *
  * 2. Seed-данные — "Неопределённый" тип уже есть в БД
- *    (создаётся миграцией changeset-2). На него можно полагаться.
+ *    (создаётся миграцией). На него можно полагаться.
  *
  * 3. Бизнес-правила удаления:
  *    - Нельзя удалить "Неопределённый" → 403
@@ -40,9 +39,8 @@ import com.example.ai_img_back.clientutils.dto.UserRequest;
  */
 public class ImageTypeControllerTest extends BaseTest {
 
-    /** UUID "Неопределённого" типа из changeset-2 */
-    private static final UUID UNDEFINED_TYPE_ID =
-            UUID.fromString("00000000-0000-0000-0000-000000000001");
+    /** ID "Неопределённого" типа из seed-данных миграции */
+    private static final Long UNDEFINED_TYPE_ID = 1L;
 
     // ═══════════════════════════════════════════
     // Helpers
@@ -65,7 +63,7 @@ public class ImageTypeControllerTest extends BaseTest {
     }
 
     /** Создать тип от имени userId */
-    private ImageTypeDTO createType(UUID userId, String name, String typePrompt) throws Exception {
+    private ImageTypeDTO createType(Long userId, String name, String typePrompt) throws Exception {
         ImageTypeRequest req = new ImageTypeRequest();
         req.setName(name);
         req.setTypePrompt(typePrompt);
@@ -87,19 +85,6 @@ public class ImageTypeControllerTest extends BaseTest {
 
     @Test
     void createType_withAllFields_shouldReturnCreatedType() throws Exception {
-        /*
-         * .header("UserId", userId.toString()) — добавляет HTTP-заголовок.
-         *
-         * В NestJS:
-         *   request(app).post('/image-types')
-         *     .set('UserId', userId)
-         *     .send({ name: 'Фото', typePrompt: '...' })
-         *
-         * В Spring:
-         *   mvc.perform(post("/image-types")
-         *     .header("UserId", userId.toString())
-         *     .content(json).contentType(JSON))
-         */
         UserDTO user = createUser();
         String uniqueName = "Фото-" + UUID.randomUUID();
 
@@ -109,7 +94,6 @@ public class ImageTypeControllerTest extends BaseTest {
         assertEquals(uniqueName, dto.getName());
         assertEquals("a photograph of", dto.getTypePrompt());
         assertEquals(user.getId(), dto.getCreatedByUserId());
-        assertNotNull(dto.getCreatedAt());
     }
 
     @Test
@@ -140,11 +124,6 @@ public class ImageTypeControllerTest extends BaseTest {
 
     @Test
     void createType_duplicateName_shouldReturn400() throws Exception {
-        /*
-         * UNIQUE constraint на lower(name) — case-insensitive.
-         * "Фото" и "фото" считаются дубликатами.
-         * DataIntegrityViolationException → 400.
-         */
         UserDTO user = createUser();
         String name = "Дубль-" + UUID.randomUUID();
 
@@ -167,10 +146,6 @@ public class ImageTypeControllerTest extends BaseTest {
 
     @Test
     void getAll_shouldContainUndefinedType() throws Exception {
-        /*
-         * "Неопределённый" тип создаётся seed-данными в миграции.
-         * Он ВСЕГДА есть в БД — это инвариант системы.
-         */
         MockHttpServletResponse resp = mvc.perform(get("/image-types"))
                 .andExpect(status().isOk())
                 .andReturn().getResponse();
@@ -196,10 +171,6 @@ public class ImageTypeControllerTest extends BaseTest {
 
     @Test
     void delete_ownType_shouldReturn200() throws Exception {
-        /*
-         * Создатель удаляет свой тип → успех.
-         * Проверяем что после удаления тип не появляется в getAll.
-         */
         UserDTO user = createUser();
         ImageTypeDTO type = createType(user.getId(), "Удалить-" + UUID.randomUUID(), null);
 
@@ -222,12 +193,6 @@ public class ImageTypeControllerTest extends BaseTest {
 
     @Test
     void delete_otherUsersType_shouldReturn403() throws Exception {
-        /*
-         * Пользователь A создал тип.
-         * Пользователь B пытается удалить → 403.
-         *
-         * IllegalStateException → GlobalExceptionHandler → 403.
-         */
         UserDTO creator = createUser();
         UserDTO stranger = createUser();
         ImageTypeDTO type = createType(creator.getId(), "Чужой-" + UUID.randomUUID(), null);
@@ -250,7 +215,7 @@ public class ImageTypeControllerTest extends BaseTest {
     void delete_nonExistent_shouldReturn404() throws Exception {
         UserDTO user = createUser();
 
-        mvc.perform(delete("/image-types/{id}", UUID.randomUUID())
+        mvc.perform(delete("/image-types/{id}", 999999L)
                         .header("UserId", user.getId().toString()))
                 .andExpect(status().isNotFound());
     }
@@ -261,9 +226,6 @@ public class ImageTypeControllerTest extends BaseTest {
 
     @Test
     void addFavorite_shouldAppearInFavoritesList() throws Exception {
-        /*
-         * Полный цикл: добавить в избранное → получить список → проверить что есть.
-         */
         UserDTO user = createUser();
         ImageTypeDTO type = createType(user.getId(), "Избранное-" + UUID.randomUUID(), null);
 
@@ -279,11 +241,11 @@ public class ImageTypeControllerTest extends BaseTest {
                 .andExpect(status().isOk())
                 .andReturn().getResponse();
 
-        UUID[] favorites = objectMapper.readValue(
-                resp.getContentAsString(), UUID[].class);
+        Long[] favorites = objectMapper.readValue(
+                resp.getContentAsString(), Long[].class);
 
         boolean found = false;
-        for (UUID f : favorites) {
+        for (Long f : favorites) {
             if (f.equals(type.getId())) {
                 found = true;
                 break;
@@ -294,9 +256,6 @@ public class ImageTypeControllerTest extends BaseTest {
 
     @Test
     void addFavorite_twice_shouldBeIdempotent() throws Exception {
-        /*
-         * ON CONFLICT DO NOTHING — повторное добавление не ошибка.
-         */
         UserDTO user = createUser();
         ImageTypeDTO type = createType(user.getId(), "Дважды-" + UUID.randomUUID(), null);
 
@@ -332,10 +291,10 @@ public class ImageTypeControllerTest extends BaseTest {
                 .andExpect(status().isOk())
                 .andReturn().getResponse();
 
-        UUID[] favorites = objectMapper.readValue(
-                resp.getContentAsString(), UUID[].class);
+        Long[] favorites = objectMapper.readValue(
+                resp.getContentAsString(), Long[].class);
 
-        for (UUID f : favorites) {
+        for (Long f : favorites) {
             assertNotEquals(type.getId(), f, "Тип не должен быть в избранном");
         }
     }
@@ -344,16 +303,13 @@ public class ImageTypeControllerTest extends BaseTest {
     void addFavorite_nonExistentType_shouldReturn404() throws Exception {
         UserDTO user = createUser();
 
-        mvc.perform(post("/image-types/{id}/favorite", UUID.randomUUID())
+        mvc.perform(post("/image-types/{id}/favorite", 999999L)
                         .header("UserId", user.getId().toString()))
                 .andExpect(status().isNotFound());
     }
 
     @Test
     void getFavorites_emptyByDefault() throws Exception {
-        /*
-         * Новый пользователь — избранное пустое.
-         */
         UserDTO user = createUser();
 
         MockHttpServletResponse resp = mvc.perform(
@@ -362,11 +318,9 @@ public class ImageTypeControllerTest extends BaseTest {
                 .andExpect(status().isOk())
                 .andReturn().getResponse();
 
-        UUID[] favorites = objectMapper.readValue(
-                resp.getContentAsString(), UUID[].class);
+        Long[] favorites = objectMapper.readValue(
+                resp.getContentAsString(), Long[].class);
 
         assertEquals(0, favorites.length);
     }
-
-
 }

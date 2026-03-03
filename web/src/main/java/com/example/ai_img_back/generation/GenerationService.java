@@ -14,43 +14,16 @@ import org.springframework.transaction.annotation.Transactional;
 import com.example.ai_img_back.asset.Asset;
 import com.example.ai_img_back.asset.AssetRepository;
 import com.example.ai_img_back.clientutils.dto.GenerateRequest;
-import com.example.ai_img_back.clientutils.enums.BatchStatus;
 import com.example.ai_img_back.clientutils.enums.DedupeMode;
-import com.example.ai_img_back.clientutils.enums.DedupeResult;
 import com.example.ai_img_back.clientutils.enums.RequestStatus;
 import com.example.ai_img_back.clientutils.enums.RoutingMode;
 import com.example.ai_img_back.imagetype.ImageType;
 import com.example.ai_img_back.imagetype.ImageTypeService;
-import com.example.ai_img_back.prompt.Prompt;
-import com.example.ai_img_back.prompt.PromptRepository;
 import com.example.ai_img_back.style.Style;
 import com.example.ai_img_back.style.StyleService;
 
 import lombok.RequiredArgsConstructor;
 
-/**
- * Главный сервис генерации — оркестратор.
- *
- * Координирует весь процесс:
- * 1. Валидация входных данных
- * 2. Создание промпта (одноразовый)
- * 3. Создание batch
- * 4. Создание request-ов (декартово произведение type × style)
- * 5. Последовательное выполнение каждого request
- * 6. Завершение batch
- *
- * В NestJS это был бы GenerationService с конструктором:
- *   constructor(
- *     private readonly imageTypeService: ImageTypeService,
- *     private readonly styleService: StyleService,
- *     private readonly promptRepo: PromptRepository,
- *     private readonly assetRepo: AssetRepository,
- *     private readonly batchRepo: GenerationBatchRepository,
- *     private readonly requestRepo: GenerationRequestRepository,
- *   ) {}
- *
- * @RequiredArgsConstructor генерирует точно такой же конструктор.
- */
 @Service
 @RequiredArgsConstructor
 @Transactional
@@ -58,21 +31,11 @@ public class GenerationService {
 
     private final ImageTypeService imageTypeService;
     private final StyleService styleService;
-    private final PromptRepository promptRepository;
     private final AssetRepository assetRepository;
     private final GenerationBatchRepository batchRepository;
     private final GenerationRequestRepository requestRepository;
 
-    /**
-     * Главный метод — запуск генерации.
-     *
-     * Возвращает список GenerationRequest с итоговыми статусами.
-     * Контроллер преобразует их в DTO для ответа клиенту.
-     *
-     * @param currentUserId — кто запускает
-     * @param request — тело запроса от клиента
-     */
-    public List<GenerationRequest> generate(UUID currentUserId, GenerateRequest request) {
+    public List<GenerationRequest> generate(Long currentUserId, GenerateRequest request) {
 
         // === Шаг 0: Валидация ===
 
@@ -94,10 +57,7 @@ public class GenerationService {
             throw new IllegalArgumentException(
                     "Нельзя генерировать с неопределённым стилем");
         }
-        
 
-        // Загрузить и проверить существование типов и стилей.
-        // getById бросит EntityNotFoundException если не найден.
         List<ImageType> types = request.getImageTypeIds().stream()
                 .map(imageTypeService::getById)
                 .toList();
@@ -106,66 +66,39 @@ public class GenerationService {
                 .map(styleService::getById)
                 .toList();
 
-        // === Создание промпта (одноразовый снимок) ===
+        // === Шаг 1: Создать batch (хранит prompt и params) ===
 
-        Prompt prompt = promptRepository.create(
-                currentUserId,
-                request.getUserPrompt().trim(),
-                request.getGenerationParams() == null ? "{}" : request.getGenerationParams()
-        );
+        DedupeMode dedupeMode = request.getDedupeMode() != null
+                ? request.getDedupeMode() : DedupeMode.SKIP;
 
-        // === Шаг 1: Создать batch ===
+        String generationParams = request.getGenerationParams() != null
+                ? request.getGenerationParams() : "{}";
 
         GenerationBatch batch = batchRepository.create(
                 currentUserId,
+                request.getUserPrompt().trim(),
+                generationParams,
+                dedupeMode,
                 request.getProvider() != null ? request.getProvider() : "openai",
                 request.getModel(),
-                request.getRoutingMode() != null ? request.getRoutingMode() : RoutingMode.DIRECT,
-                BatchStatus.RUNNING
+                request.getRoutingMode() != null ? request.getRoutingMode() : RoutingMode.DIRECT
         );
 
         // === Шаг 2: Сформировать request-ы (декартово произведение) ===
 
-        /*
-         * Декартово произведение:
-         * 2 типа × 3 стиля = 6 request-ов.
-         *
-         * В TypeScript это:
-         *   types.flatMap(type => styles.map(style => ({ type, style })))
-         *
-         * В Java — вложенный for. Можно и через Stream,
-         * но for нагляднее для начинающих.
-         */
         List<GenerationRequest> requests = new ArrayList<>();
 
         for (ImageType type : types) {
             for (Style style : styles) {
-                // Собрать промпт
-                String typePromptSnapshot = type.getTypePrompt() != null ? type.getTypePrompt() : "";
-                String stylePromptSnapshot = style.getStylePrompt() != null ? style.getStylePrompt() : "";
-                String userPromptSnapshot = prompt.getText();
+                String typePrompt = type.getTypePrompt() != null ? type.getTypePrompt() : "";
+                String stylePrompt = style.getStylePrompt() != null ? style.getStylePrompt() : "";
+                String userPrompt = batch.getUserPrompt();
 
-                String finalPromptSnapshot = composeFinalPrompt(
-                        typePromptSnapshot, stylePromptSnapshot, userPromptSnapshot);
+                String finalPrompt = composeFinalPrompt(typePrompt, stylePrompt, userPrompt);
+                String finalPromptHash = computeHash(finalPrompt, generationParams);
 
-                String finalPromptHash = computeHash(finalPromptSnapshot, prompt.getGenerationParams());
-
-                // Проверка дедупликации
-                DedupeMode dedupeMode = request.getDedupeMode() != null
-                        ? request.getDedupeMode() : DedupeMode.SKIP;
-
-                boolean isDuplicate = assetRepository
-                        .findByOwnerAndHash(currentUserId, finalPromptHash)
-                        .isPresent();
-
-                DedupeResult dedupeResult = isDuplicate ? DedupeResult.DUPLICATE : DedupeResult.NEW;
-
-                // Создать request
                 GenerationRequest genRequest = requestRepository.create(
-                        batch.getId(), currentUserId,
-                        type.getId(), style.getId(), prompt.getId(),
-                        userPromptSnapshot, finalPromptSnapshot, finalPromptHash,
-                        dedupeResult, dedupeMode
+                        batch.getId(), type.getId(), style.getId(), finalPromptHash
                 );
 
                 requests.add(genRequest);
@@ -174,76 +107,48 @@ public class GenerationService {
 
         // === Шаг 3: Последовательное выполнение ===
 
-        int doneCount = 0;
-        int failedCount = 0;
-
         for (GenerationRequest genReq : requests) {
 
-            // Пропуск дубликатов
-            if (genReq.getDedupeResult() == DedupeResult.DUPLICATE
-                    && genReq.getDedupeMode() == DedupeMode.SKIP) {
+            // Проверка дедупликации
+            boolean isDuplicate = assetRepository.existsByHash(genReq.getFinalPromptHash());
+
+            if (isDuplicate && dedupeMode == DedupeMode.SKIP) {
                 requestRepository.markSkipped(genReq.getId());
                 genReq.setStatus(RequestStatus.SKIPPED);
-                doneCount++;
                 continue;
             }
 
-            // Пометить как RUNNING
             requestRepository.markRunning(genReq.getId());
 
             try {
                 // Вызов AI (заглушка)
-                AiResult aiResult = callAiProvider(
-                        genReq.getFinalPromptSnapshot(),
-                        genReq.getOwnerUserId()
-                );
+                AiResult aiResult = callAiProvider(genReq.getFinalPromptHash(), currentUserId);
 
                 // Сохранить asset
                 Asset asset = assetRepository.create(new Asset()
-                        .setOwnerUserId(genReq.getOwnerUserId())
                         .setImageTypeId(genReq.getImageTypeId())
                         .setStyleId(genReq.getStyleId())
-                        .setPromptId(genReq.getPromptId())
-                        .setUserPromptSnapshot(genReq.getUserPromptSnapshot())
-                        .setTypePromptSnapshot(findTypePromptSnapshot(genReq.getImageTypeId()))
-                        .setStylePromptSnapshot(findStylePromptSnapshot(genReq.getStyleId()))
-                        .setFinalPromptSnapshot(genReq.getFinalPromptSnapshot())
-                        .setFinalPromptHash(genReq.getFinalPromptHash())
                         .setFileUri(aiResult.fileUri())
-                        .setProvider(aiResult.provider())
-                        .setModel(aiResult.model())
-                        .setMeta(aiResult.meta())
                 );
 
                 requestRepository.markDone(genReq.getId(), asset.getId());
                 genReq.setStatus(RequestStatus.DONE);
                 genReq.setCreatedAssetId(asset.getId());
-                doneCount++;
 
             } catch (Exception e) {
                 requestRepository.markFailed(genReq.getId(), e.getMessage());
                 genReq.setStatus(RequestStatus.FAILED);
                 genReq.setErrorMessage(e.getMessage());
-                failedCount++;
             }
         }
 
-        // === Шаг 4: Завершить batch ===
-
-        BatchStatus finalStatus = failedCount > 0 && doneCount == 0
-                ? BatchStatus.FAILED : BatchStatus.DONE;
-        batchRepository.updateStatus(batch.getId(), finalStatus);
+        // Статус batch не хранится — вычисляется по COUNT реквестов
 
         return requests;
     }
 
     // ===== Вспомогательные методы =====
 
-    /**
-     * Сборка финального промпта.
-     * Пока — простая конкатенация. Позже можно добавить
-     * шаблон, quality-блок, нормализацию и т.д.
-     */
     private String composeFinalPrompt(String typePrompt, String stylePrompt, String userPrompt) {
         StringBuilder sb = new StringBuilder();
         if (!typePrompt.isBlank()) {
@@ -256,15 +161,6 @@ public class GenerationService {
         return sb.toString().trim();
     }
 
-    /**
-     * SHA-256 хеш для дедупликации.
-     *
-     * Включает и текст промпта, и generation_params —
-     * одинаковый текст с разным размером = разные картинки.
-     *
-     * MessageDigest — стандартный Java API для хеширования.
-     * HexFormat — перевод байтов в hex-строку (Java 17+).
-     */
     private String computeHash(String finalPrompt, String generationParams) {
         try {
             MessageDigest digest = MessageDigest.getInstance("SHA-256");
@@ -272,29 +168,15 @@ public class GenerationService {
             byte[] hashBytes = digest.digest(input.getBytes(StandardCharsets.UTF_8));
             return HexFormat.of().formatHex(hashBytes);
         } catch (NoSuchAlgorithmException e) {
-            // SHA-256 всегда доступен в JVM — сюда не попадём
             throw new RuntimeException("SHA-256 не доступен", e);
         }
     }
 
-    private String findTypePromptSnapshot(UUID imageTypeId) {
-        String tp = imageTypeService.getById(imageTypeId).getTypePrompt();
-        return tp != null ? tp : "";
-    }
+    record AiResult(String fileUri, String provider, String model) {}
 
-    private String findStylePromptSnapshot(UUID styleId) {
-        String sp = styleService.getById(styleId).getStylePrompt();
-        return sp != null ? sp : "";
-    }
-
-    /**
-     * Заглушка AI-клиента.
-     */
-    record AiResult(String fileUri, String provider, String model, String meta) {}
-
-    private AiResult callAiProvider(String finalPrompt, UUID ownerUserId) {
+    private AiResult callAiProvider(String finalPromptHash, Long ownerUserId) {
         // TODO: заменить на реальный вызов AI API
         String fakeUri = "generated/" + ownerUserId + "/" + UUID.randomUUID() + ".png";
-        return new AiResult(fakeUri, "stub", "stub-model", null);
+        return new AiResult(fakeUri, "stub", "stub-model");
     }
 }

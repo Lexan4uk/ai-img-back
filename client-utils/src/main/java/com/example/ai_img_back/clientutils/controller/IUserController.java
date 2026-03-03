@@ -1,7 +1,6 @@
 package com.example.ai_img_back.clientutils.controller;
 
 import java.util.List;
-import java.util.UUID;
 
 import org.springframework.web.bind.annotation.*;
 
@@ -18,8 +17,8 @@ public interface IUserController {
     List<UserDTO> getAll();
 
     @GetMapping("/{id}")
-    UserDTO getById(@PathVariable("id") UUID id);
+    UserDTO getById(@PathVariable("id") Long id);
 
     @DeleteMapping("/{id}")
-    void delete(@PathVariable("id") UUID id);
+    void delete(@PathVariable("id") Long id);
 }

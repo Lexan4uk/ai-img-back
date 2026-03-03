@@ -27,8 +27,8 @@ import com.example.ai_img_back.clientutils.dto.UserRequest;
  */
 public class StyleControllerTest extends BaseTest {
 
-    private static final UUID UNDEFINED_STYLE_ID =
-            UUID.fromString("00000000-0000-0000-0000-000000000002");
+    /** ID "Неопределённого" стиля из seed-данных миграции */
+    private static final Long UNDEFINED_STYLE_ID = 1L;
 
     // ═══════════════════════════════════════════
     // Helpers
@@ -49,7 +49,7 @@ public class StyleControllerTest extends BaseTest {
         return objectMapper.readValue(resp.getContentAsString(), UserDTO.class);
     }
 
-    private StyleDTO createStyle(UUID userId, String name, String stylePrompt) throws Exception {
+    private StyleDTO createStyle(Long userId, String name, String stylePrompt) throws Exception {
         StyleRequest req = new StyleRequest();
         req.setName(name);
         req.setStylePrompt(stylePrompt);
@@ -80,7 +80,6 @@ public class StyleControllerTest extends BaseTest {
         assertEquals(name, dto.getName());
         assertEquals("in the style of Aivazovsky", dto.getStylePrompt());
         assertEquals(user.getId(), dto.getCreatedByUserId());
-        assertNotNull(dto.getCreatedAt());
     }
 
     @Test
@@ -198,7 +197,7 @@ public class StyleControllerTest extends BaseTest {
     void delete_nonExistent_shouldReturn404() throws Exception {
         UserDTO user = createUser();
 
-        mvc.perform(delete("/styles/{id}", UUID.randomUUID())
+        mvc.perform(delete("/styles/{id}", 999999L)
                         .header("UserId", user.getId().toString()))
                 .andExpect(status().isNotFound());
     }
@@ -222,11 +221,11 @@ public class StyleControllerTest extends BaseTest {
                 .andExpect(status().isOk())
                 .andReturn().getResponse();
 
-        UUID[] favorites = objectMapper.readValue(
-                resp.getContentAsString(), UUID[].class);
+        Long[] favorites = objectMapper.readValue(
+                resp.getContentAsString(), Long[].class);
 
         boolean found = false;
-        for (UUID f : favorites) {
+        for (Long f : favorites) {
             if (f.equals(style.getId())) {
                 found = true;
                 break;
@@ -268,10 +267,10 @@ public class StyleControllerTest extends BaseTest {
                 .andExpect(status().isOk())
                 .andReturn().getResponse();
 
-        UUID[] favorites = objectMapper.readValue(
-                resp.getContentAsString(), UUID[].class);
+        Long[] favorites = objectMapper.readValue(
+                resp.getContentAsString(), Long[].class);
 
-        for (UUID f : favorites) {
+        for (Long f : favorites) {
             assertNotEquals(style.getId(), f);
         }
     }
@@ -280,7 +279,7 @@ public class StyleControllerTest extends BaseTest {
     void addFavorite_nonExistentStyle_shouldReturn404() throws Exception {
         UserDTO user = createUser();
 
-        mvc.perform(post("/styles/{id}/favorite", UUID.randomUUID())
+        mvc.perform(post("/styles/{id}/favorite", 999999L)
                         .header("UserId", user.getId().toString()))
                 .andExpect(status().isNotFound());
     }
@@ -295,8 +294,8 @@ public class StyleControllerTest extends BaseTest {
                 .andExpect(status().isOk())
                 .andReturn().getResponse();
 
-        UUID[] favorites = objectMapper.readValue(
-                resp.getContentAsString(), UUID[].class);
+        Long[] favorites = objectMapper.readValue(
+                resp.getContentAsString(), Long[].class);
 
         assertEquals(0, favorites.length);
     }

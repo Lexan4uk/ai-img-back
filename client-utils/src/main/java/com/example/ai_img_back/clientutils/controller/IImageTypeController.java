@@ -1,7 +1,6 @@
 package com.example.ai_img_back.clientutils.controller;
 
 import java.util.List;
-import java.util.UUID;
 
 import org.springframework.web.bind.annotation.*;
 
@@ -18,14 +17,14 @@ public interface IImageTypeController {
     List<ImageTypeDTO> getAll();
 
     @DeleteMapping("/{id}")
-    void delete(@PathVariable("id") UUID id);
+    void delete(@PathVariable("id") Long id);
 
     @PostMapping("/{id}/favorite")
-    void addFavorite(@PathVariable("id") UUID id);
+    void addFavorite(@PathVariable("id") Long id);
 
     @DeleteMapping("/{id}/favorite")
-    void removeFavorite(@PathVariable("id") UUID id);
+    void removeFavorite(@PathVariable("id") Long id);
 
     @GetMapping("/favorites")
-    List<UUID> getFavoriteIds();
+    List<Long> getFavoriteIds();
 }

@@ -1,0 +1,14 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(mvn clean compile -q)",
+      "Bash(mvn test)",
+      "Bash(mvn test -q)",
+      "Bash(mvn test -pl web -q)",
+      "Bash(mvn test -pl web -Dtest=\"UserControllerTest#createUser_withAllFields_shouldReturnCreatedUser\")",
+      "Bash(mvn test -pl web -Dtest=\"UserControllerTest#createUser_withAllFields_shouldReturnCreatedUser\" -e)",
+      "Bash(mvn clean test -pl web -Dtest=\"UserControllerTest#createUser_withAllFields_shouldReturnCreatedUser\")",
+      "Bash(mvn clean test)"
+    ]
+  }
+}

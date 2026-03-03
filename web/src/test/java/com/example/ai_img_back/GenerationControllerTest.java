@@ -28,16 +28,6 @@ import com.example.ai_img_back.clientutils.dto.UserRequest;
  *
  * Это самый "тяжёлый" тест-класс — каждый тест создаёт
  * пользователя + тип(ы) + стиль(и) → запускает генерацию.
- *
- * Новый паттерн: парсинг массива DTO из ответа.
- * objectMapper.readValue(json, GenerationResultDTO[].class)
- *
- * В NestJS:
- *   const results: GenerationResultDTO[] = res.body;
- *   expect(results).toHaveLength(4);
- *
- * В Java массив, потому что Jackson не может вывести
- * generic тип List<T> без TypeReference. Массив проще.
  */
 public class GenerationControllerTest extends BaseTest {
 
@@ -60,7 +50,7 @@ public class GenerationControllerTest extends BaseTest {
         return objectMapper.readValue(resp.getContentAsString(), UserDTO.class);
     }
 
-    private ImageTypeDTO createType(UUID userId, String name) throws Exception {
+    private ImageTypeDTO createType(Long userId, String name) throws Exception {
         ImageTypeRequest req = new ImageTypeRequest();
         req.setName(name);
         req.setTypePrompt("prompt-for-" + name);
@@ -76,7 +66,7 @@ public class GenerationControllerTest extends BaseTest {
         return objectMapper.readValue(resp.getContentAsString(), ImageTypeDTO.class);
     }
 
-    private StyleDTO createStyle(UUID userId, String name) throws Exception {
+    private StyleDTO createStyle(Long userId, String name) throws Exception {
         StyleRequest req = new StyleRequest();
         req.setName(name);
         req.setStylePrompt("prompt-for-" + name);
@@ -92,13 +82,7 @@ public class GenerationControllerTest extends BaseTest {
         return objectMapper.readValue(resp.getContentAsString(), StyleDTO.class);
     }
 
-    /**
-     * Отправить POST /generations и вернуть массив результатов.
-     *
-     * GenerateRequest собирается вручную в каждом тесте,
-     * а этот helper только отправляет и парсит ответ.
-     */
-    private GenerationResultDTO[] generate(UUID userId, GenerateRequest request) throws Exception {
+    private GenerationResultDTO[] generate(Long userId, GenerateRequest request) throws Exception {
         MockHttpServletResponse resp = mvc.perform(
                 post("/generations")
                         .header("UserId", userId.toString())
@@ -139,10 +123,6 @@ public class GenerationControllerTest extends BaseTest {
 
     @Test
     void generate_2types_2styles_shouldReturn4Results() throws Exception {
-        /*
-         * Декартово произведение: 2 × 2 = 4 request-а.
-         * Все должны быть DONE (первая генерация, дубликатов нет).
-         */
         UserDTO user = createUser();
         ImageTypeDTO type1 = createType(user.getId(), "T1-" + UUID.randomUUID());
         ImageTypeDTO type2 = createType(user.getId(), "T2-" + UUID.randomUUID());
@@ -210,8 +190,8 @@ public class GenerationControllerTest extends BaseTest {
 
         GenerateRequest req = new GenerateRequest();
         req.setUserPrompt(null);
-        req.setImageTypeIds(List.of(UUID.randomUUID()));
-        req.setStyleIds(List.of(UUID.randomUUID()));
+        req.setImageTypeIds(List.of(999999L));
+        req.setStyleIds(List.of(999999L));
 
         mvc.perform(post("/generations")
                         .header("UserId", user.getId().toString())
@@ -227,7 +207,7 @@ public class GenerationControllerTest extends BaseTest {
         GenerateRequest req = new GenerateRequest();
         req.setUserPrompt("что-то");
         req.setImageTypeIds(List.of());
-        req.setStyleIds(List.of(UUID.randomUUID()));
+        req.setStyleIds(List.of(999999L));
 
         mvc.perform(post("/generations")
                         .header("UserId", user.getId().toString())
@@ -242,7 +222,7 @@ public class GenerationControllerTest extends BaseTest {
 
         GenerateRequest req = new GenerateRequest();
         req.setUserPrompt("что-то");
-        req.setImageTypeIds(List.of(UUID.randomUUID()));
+        req.setImageTypeIds(List.of(999999L));
         req.setStyleIds(List.of());
 
         mvc.perform(post("/generations")
@@ -259,7 +239,7 @@ public class GenerationControllerTest extends BaseTest {
 
         GenerateRequest req = new GenerateRequest();
         req.setUserPrompt("с несуществующим типом");
-        req.setImageTypeIds(List.of(UUID.randomUUID()));
+        req.setImageTypeIds(List.of(999999L));
         req.setStyleIds(List.of(style.getId()));
 
         mvc.perform(post("/generations")
@@ -277,7 +257,7 @@ public class GenerationControllerTest extends BaseTest {
         GenerateRequest req = new GenerateRequest();
         req.setUserPrompt("с несуществующим стилем");
         req.setImageTypeIds(List.of(type.getId()));
-        req.setStyleIds(List.of(UUID.randomUUID()));
+        req.setStyleIds(List.of(999999L));
 
         mvc.perform(post("/generations")
                         .header("UserId", user.getId().toString())
@@ -293,9 +273,7 @@ public class GenerationControllerTest extends BaseTest {
 
         GenerateRequest req = new GenerateRequest();
         req.setUserPrompt("попытка с неопределённым типом");
-        req.setImageTypeIds(List.of(
-                UUID.fromString("00000000-0000-0000-0000-000000000001") // UNDEFINED_TYPE_ID
-        ));
+        req.setImageTypeIds(List.of(1L)); // UNDEFINED_TYPE_ID
         req.setStyleIds(List.of(style.getId()));
 
         mvc.perform(post("/generations")
@@ -313,9 +291,7 @@ public class GenerationControllerTest extends BaseTest {
         GenerateRequest req = new GenerateRequest();
         req.setUserPrompt("попытка с неопределённым стилем");
         req.setImageTypeIds(List.of(type.getId()));
-        req.setStyleIds(List.of(
-                UUID.fromString("00000000-0000-0000-0000-000000000002") // UNDEFINED_STYLE_ID
-        ));
+        req.setStyleIds(List.of(1L)); // UNDEFINED_STYLE_ID
 
         mvc.perform(post("/generations")
                         .header("UserId", user.getId().toString())
@@ -334,7 +310,7 @@ public class GenerationControllerTest extends BaseTest {
         req.setUserPrompt("микс валидного и неопределённого");
         req.setImageTypeIds(List.of(
                 validType.getId(),
-                UUID.fromString("00000000-0000-0000-0000-000000000001") // UNDEFINED подмешан
+                1L // UNDEFINED подмешан
         ));
         req.setStyleIds(List.of(style.getId()));
 
@@ -345,20 +321,12 @@ public class GenerationControllerTest extends BaseTest {
                 .andExpect(status().isBadRequest());
     }
 
-
     // ═══════════════════════════════════════════
     // Дедупликация
     // ═══════════════════════════════════════════
 
     @Test
     void generate_duplicateWithSkip_shouldReturnSkipped() throws Exception {
-        /*
-         * Первый запрос → DONE (asset создан).
-         * Второй запрос с тем же промптом + SKIP → SKIPPED.
-         *
-         * Дедупликация работает по SHA-256 hash от:
-         *   final_prompt + "|" + generation_params
-         */
         UserDTO user = createUser();
         ImageTypeDTO type = createType(user.getId(), "Dedup-" + UUID.randomUUID());
         StyleDTO style = createStyle(user.getId(), "Dedup-" + UUID.randomUUID());
@@ -381,10 +349,6 @@ public class GenerationControllerTest extends BaseTest {
 
     @Test
     void generate_duplicateWithOverwrite_shouldReturnDone() throws Exception {
-        /*
-         * OVERWRITE — генерирует заново даже если дубликат.
-         * Создаётся новый asset (старый не трогается).
-         */
         UserDTO user = createUser();
         ImageTypeDTO type = createType(user.getId(), "Over-" + UUID.randomUUID());
         StyleDTO style = createStyle(user.getId(), "Over-" + UUID.randomUUID());
@@ -397,7 +361,7 @@ public class GenerationControllerTest extends BaseTest {
         // Первый раз
         GenerationResultDTO[] first = generate(user.getId(), req);
         assertEquals("DONE", first[0].getStatus().name());
-        UUID firstAssetId = first[0].getCreatedAssetId();
+        Long firstAssetId = first[0].getCreatedAssetId();
 
         // Второй раз с OVERWRITE — тоже DONE, но новый asset
         req.setDedupeMode(com.example.ai_img_back.clientutils.enums.DedupeMode.OVERWRITE);
@@ -409,10 +373,6 @@ public class GenerationControllerTest extends BaseTest {
 
     @Test
     void generate_samePromptDifferentParams_shouldNotBeDuplicate() throws Exception {
-        /*
-         * Одинаковый текст, но разные generation_params →
-         * разный hash → НЕ дубликат → оба DONE.
-         */
         UserDTO user = createUser();
         ImageTypeDTO type = createType(user.getId(), "DiffP-" + UUID.randomUUID());
         StyleDTO style = createStyle(user.getId(), "DiffP-" + UUID.randomUUID());
@@ -437,10 +397,11 @@ public class GenerationControllerTest extends BaseTest {
     }
 
     @Test
-    void generate_samePromptDifferentUsers_shouldNotBeDuplicate() throws Exception {
+    void generate_samePromptDifferentUsers_globalDedup_shouldSkipSecond() throws Exception {
         /*
-         * Дедупликация в рамках ОДНОГО пользователя.
-         * Разные пользователи с тем же промптом → оба DONE.
+         * Глобальная дедупликация: дефолтный режим SKIP.
+         * User1 генерирует → DONE. User2 с тем же промптом → SKIPPED,
+         * т.к. asset с таким hash уже существует (global dedup).
          */
         UserDTO user1 = createUser();
         UserDTO user2 = createUser();
@@ -449,6 +410,30 @@ public class GenerationControllerTest extends BaseTest {
 
         GenerateRequest req = new GenerateRequest();
         req.setUserPrompt("один и тот же промпт");
+        req.setImageTypeIds(List.of(type.getId()));
+        req.setStyleIds(List.of(style.getId()));
+
+        GenerationResultDTO[] r1 = generate(user1.getId(), req);
+        assertEquals("DONE", r1[0].getStatus().name());
+
+        GenerationResultDTO[] r2 = generate(user2.getId(), req);
+        assertEquals("SKIPPED", r2[0].getStatus().name());
+    }
+
+    @Test
+    void generate_samePromptDifferentUsers_overwrite_shouldBothDone() throws Exception {
+        /*
+         * С режимом OVERWRITE дедупликация игнорируется —
+         * оба пользователя получают DONE.
+         */
+        UserDTO user1 = createUser();
+        UserDTO user2 = createUser();
+        ImageTypeDTO type = createType(user1.getId(), "OverU-" + UUID.randomUUID());
+        StyleDTO style = createStyle(user1.getId(), "OverU-" + UUID.randomUUID());
+
+        GenerateRequest req = new GenerateRequest();
+        req.setUserPrompt("один и тот же промпт overwrite");
+        req.setDedupeMode(com.example.ai_img_back.clientutils.enums.DedupeMode.OVERWRITE);
         req.setImageTypeIds(List.of(type.getId()));
         req.setStyleIds(List.of(style.getId()));
 

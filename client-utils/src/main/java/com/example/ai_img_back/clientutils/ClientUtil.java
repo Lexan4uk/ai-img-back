@@ -14,7 +14,9 @@ import java.lang.reflect.Field;
 import java.lang.reflect.Parameter;
 import java.lang.reflect.Proxy;
 import java.lang.reflect.Type;
-import java.util.*;
+import java.util.Collection;
+import java.util.HashMap;
+import java.util.Map;
 
 /**
  * UserId передаётся автоматически через OkHttp Interceptor —
@@ -32,7 +34,7 @@ public class ClientUtil {
 
     /** Кеш — чтобы не создавать прокси каждый раз для одного интерфейса */
     private final Map<Class<?>, Object> clients = new HashMap<>();
-    public ClientUtil(String baseUrl, UUID userId) {
+    public ClientUtil(String baseUrl, Long userId) {
         this.baseUrl = baseUrl;
 
         /*
@@ -43,7 +45,7 @@ public class ClientUtil {
                 .addInterceptor(chain -> {
                     Request original = chain.request();
                     Request withHeader = original.newBuilder()
-                            .header("UserId", userId.toString())
+                            .header("UserId", String.valueOf(userId))
                             .build();
                     return chain.proceed(withHeader);
                 })
