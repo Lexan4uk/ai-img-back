@@ -12,10 +12,11 @@ public interface ImageAiProvider {
      * @param prompt      финальный промпт (type + style + user)
      * @param aspectRatio соотношение сторон ("1:1", "1:1.5", "1.5:1" и т.д.),
      *                    null или пустая строка = авто/дефолт провайдера
+     * @param model       имя модели из запроса клиента (null = дефолт провайдера)
      * @return байты сгенерированного изображения (PNG/WebP)
      * @throws AiProviderException при ошибке API
      */
-    byte[] generate(String prompt, String aspectRatio) throws AiProviderException;
+    byte[] generate(String prompt, String aspectRatio, String model) throws AiProviderException;
 
     /** Имя провайдера ("openai", "stability") */
     String providerName();

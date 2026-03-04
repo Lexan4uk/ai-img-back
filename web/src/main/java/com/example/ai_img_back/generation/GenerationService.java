@@ -144,6 +144,9 @@ public class GenerationService {
         // Парсим aspect ratio из generationParams (если указан)
         String aspectRatio = parseStringParam(generationParams, "aspectRatio", DEFAULT_ASPECT_RATIO);
 
+        // Модель из запроса клиента (null → провайдер использует свой дефолт)
+        String requestedModel = request.getModel();
+
         // === Шаг 4: Последовательное выполнение ===
 
         boolean authFailed = false;
@@ -190,7 +193,7 @@ public class GenerationService {
                         genReq.getFinalPromptHash().substring(0, 8), aspectRatio);
 
                 // Вызов AI-провайдера
-                byte[] imageBytes = provider.generate(finalPrompt, aspectRatio);
+                byte[] imageBytes = provider.generate(finalPrompt, aspectRatio, requestedModel);
 
                 // Сохранение на диск
                 String fileUri = imageStorageService.save(imageBytes);

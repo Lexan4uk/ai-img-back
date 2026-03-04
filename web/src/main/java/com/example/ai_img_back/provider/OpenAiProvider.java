@@ -84,16 +84,17 @@ public class OpenAiProvider implements ImageAiProvider {
     }
 
     @Override
-    public byte[] generate(String prompt, String aspectRatio) throws AiProviderException {
+    public byte[] generate(String prompt, String aspectRatio, String model) throws AiProviderException {
         if (!isAvailable()) {
             throw new AiProviderException("OpenAI API key не настроен", 0, false);
         }
 
+        String effectiveModel = (model != null && !model.isBlank()) ? model : props.getOpenai().getModel();
         int maxRetries = props.getOpenai().getMaxRetries();
 
         for (int attempt = 1; attempt <= maxRetries; attempt++) {
             try {
-                return doGenerate(prompt, aspectRatio);
+                return doGenerate(prompt, aspectRatio, effectiveModel);
             } catch (AiProviderException e) {
                 if (!e.isRetryable() || attempt == maxRetries) {
                     throw e;
@@ -108,7 +109,7 @@ public class OpenAiProvider implements ImageAiProvider {
     }
 
     @SuppressWarnings("unchecked")
-    private byte[] doGenerate(String prompt, String aspectRatio) {
+    private byte[] doGenerate(String prompt, String aspectRatio, String model) {
         HttpHeaders headers = new HttpHeaders();
         headers.setContentType(MediaType.APPLICATION_JSON);
         headers.setBearerAuth(props.getOpenai().getApiKey());
@@ -116,7 +117,7 @@ public class OpenAiProvider implements ImageAiProvider {
         String size = mapAspectRatioToSize(aspectRatio);
 
         Map<String, Object> body = new HashMap<>();
-        body.put("model", props.getOpenai().getModel());
+        body.put("model", model);
         body.put("prompt", prompt);
         body.put("n", 1);
         body.put("size", size);

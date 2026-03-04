@@ -77,7 +77,7 @@ public class StabilityProvider implements ImageAiProvider {
     }
 
     @Override
-    public byte[] generate(String prompt, String aspectRatio) throws AiProviderException {
+    public byte[] generate(String prompt, String aspectRatio, String model) throws AiProviderException {
         if (!isAvailable()) {
             throw new AiProviderException("Stability API key не настроен", 0, false);
         }

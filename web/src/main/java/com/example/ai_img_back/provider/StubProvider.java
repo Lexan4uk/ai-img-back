@@ -25,8 +25,8 @@ public class StubProvider implements ImageAiProvider {
     private static final byte[] STUB_PNG = createStubPng();
 
     @Override
-    public byte[] generate(String prompt, String aspectRatio) throws AiProviderException {
-        log.debug("StubProvider: генерация для prompt длиной {} символов, ratio={}", prompt.length(), aspectRatio);
+    public byte[] generate(String prompt, String aspectRatio, String model) throws AiProviderException {
+        log.debug("StubProvider: генерация для prompt длиной {} символов, ratio={}, model={}", prompt.length(), aspectRatio, model);
         return STUB_PNG;
     }
 
