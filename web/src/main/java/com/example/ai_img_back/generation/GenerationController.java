@@ -5,6 +5,7 @@ import java.util.List;
 import org.springframework.web.bind.annotation.*;
 
 import com.example.ai_img_back.clientutils.dto.GenerateRequest;
+import com.example.ai_img_back.clientutils.dto.GenerationCheckResult;
 import com.example.ai_img_back.clientutils.dto.GenerationResultDTO;
 
 import lombok.RequiredArgsConstructor;
@@ -15,6 +16,15 @@ import lombok.RequiredArgsConstructor;
 public class GenerationController {
 
     private final GenerationService generationService;
+
+    /**
+     * Проверка дубликатов перед генерацией.
+     * Клиент вызывает для показа: "20 картинок, 8 уже есть. Пересоздать?"
+     */
+    @PostMapping("/check")
+    public GenerationCheckResult check(@RequestBody GenerateRequest request) {
+        return generationService.check(request);
+    }
 
     @PostMapping
     public List<GenerationResultDTO> generate(

@@ -3,13 +3,11 @@ package com.example.ai_img_back.clientutils.enums;
 /**
  * Статус отдельного запроса генерации.
  *
- * PENDING → RUNNING → DONE/FAILED/SKIPPED
- * SKIPPED — если дубликат и dedupe_mode=SKIP.
+ * PENDING → RUNNING → DONE/FAILED
  */
 public enum RequestStatus {
     PENDING,
     RUNNING,
     DONE,
-    FAILED,
-    SKIPPED
+    FAILED
 }

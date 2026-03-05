@@ -1,0 +1,42 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+    xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+    xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+    xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+        http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-latest.xsd">
+
+    <!-- ============================================= -->
+    <!-- v3: Дедупликация переделана на клиентскую      -->
+    <!--     dedupe_mode → overwrite_duplicates (bool)  -->
+    <!--     SKIPPED статус удалён                      -->
+    <!-- ============================================= -->
+
+    <changeSet id="v3-batch-overwrite-duplicates" author="ai-img-back">
+        <sql>
+            -- Добавить новую колонку
+            ALTER TABLE generation_batches
+                ADD COLUMN overwrite_duplicates BOOLEAN NOT NULL DEFAULT false;
+
+            -- Перенести данные: OVERWRITE → true, SKIP → false
+            UPDATE generation_batches SET overwrite_duplicates = true WHERE dedupe_mode = 'OVERWRITE';
+
+            -- Удалить старую колонку и constraint
+            ALTER TABLE generation_batches DROP CONSTRAINT IF EXISTS ck_batches_dedupe;
+            ALTER TABLE generation_batches DROP COLUMN dedupe_mode;
+        </sql>
+    </changeSet>
+
+    <changeSet id="v3-remove-skipped-status" author="ai-img-back">
+        <sql>
+            -- Перевести существующие SKIPPED в DONE (они были дубликатами, asset уже существовал)
+            UPDATE generation_requests SET status = 'DONE' WHERE status = 'SKIPPED';
+
+            -- Обновить constraint на статус
+            ALTER TABLE generation_requests DROP CONSTRAINT IF EXISTS ck_requests_status;
+            ALTER TABLE generation_requests
+                ADD CONSTRAINT ck_requests_status
+                CHECK (status IN ('PENDING', 'RUNNING', 'DONE', 'FAILED'));
+        </sql>
+    </changeSet>
+
+</databaseChangeLog>

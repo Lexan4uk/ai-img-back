@@ -1,6 +1,5 @@
 package com.example.ai_img_back.generation;
 
-import com.example.ai_img_back.clientutils.enums.DedupeMode;
 import com.example.ai_img_back.clientutils.enums.RoutingMode;
 
 import lombok.Getter;
@@ -17,7 +16,7 @@ public class GenerationBatch {
 
     private String userPrompt;
     private String generationParams;
-    private DedupeMode dedupeMode;
+    private boolean overwriteDuplicates;
 
     private String provider;
     private String model;

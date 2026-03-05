@@ -10,13 +10,13 @@ import java.util.List;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Transactional;
 
 import com.example.ai_img_back.asset.Asset;
 import com.example.ai_img_back.asset.AssetRepository;
 import com.example.ai_img_back.clientutils.dto.GenerateRequest;
-import com.example.ai_img_back.clientutils.enums.DedupeMode;
+import com.example.ai_img_back.clientutils.dto.GenerationCheckResult;
 import com.example.ai_img_back.clientutils.enums.RequestStatus;
 import com.example.ai_img_back.clientutils.enums.RoutingMode;
 import com.example.ai_img_back.imagetype.ImageType;
@@ -33,7 +33,6 @@ import lombok.RequiredArgsConstructor;
 
 @Service
 @RequiredArgsConstructor
-@Transactional
 public class GenerationService {
 
     private static final Logger log = LoggerFactory.getLogger(GenerationService.class);
@@ -50,28 +49,16 @@ public class GenerationService {
     /** Aspect ratio по умолчанию: 1:1 (квадратное изображение) */
     private static final String DEFAULT_ASPECT_RATIO = "1:1";
 
-    public List<GenerationRequest> generate(Long currentUserId, GenerateRequest request) {
+    // ===== Проверка дубликатов (перед генерацией) =====
 
-        // === Шаг 0: Валидация ===
+    /**
+     * Проверяет сколько из запрашиваемых пар тип×стиль уже сгенерированы.
+     * Клиент вызывает этот метод ДО генерации, чтобы показать пользователю:
+     * "Генерация 20 картинок. 8 уже существуют. Пересоздать?"
+     */
+    public GenerationCheckResult check(GenerateRequest request) {
 
-        if (request.getUserPrompt() == null || request.getUserPrompt().isBlank()) {
-            throw new IllegalArgumentException("Промпт не может быть пустым");
-        }
-        if (request.getImageTypeIds() == null || request.getImageTypeIds().isEmpty()) {
-            throw new IllegalArgumentException("Выберите хотя бы один тип");
-        }
-        if (request.getStyleIds() == null || request.getStyleIds().isEmpty()) {
-            throw new IllegalArgumentException("Выберите хотя бы один стиль");
-        }
-
-        if (request.getImageTypeIds().contains(ImageTypeService.UNDEFINED_TYPE_ID)) {
-            throw new IllegalArgumentException(
-                    "Нельзя генерировать с неопределённым типом изображения");
-        }
-        if (request.getStyleIds().contains(StyleService.UNDEFINED_STYLE_ID)) {
-            throw new IllegalArgumentException(
-                    "Нельзя генерировать с неопределённым стилем");
-        }
+        validateRequest(request);
 
         List<ImageType> types = request.getImageTypeIds().stream()
                 .map(imageTypeService::getById)
@@ -81,10 +68,46 @@ public class GenerationService {
                 .map(styleService::getById)
                 .toList();
 
-        // === Шаг 1: Создать batch (хранит prompt и params) ===
+        String generationParams = request.getGenerationParams() != null
+                ? request.getGenerationParams() : "{}";
 
-        DedupeMode dedupeMode = request.getDedupeMode() != null
-                ? request.getDedupeMode() : DedupeMode.SKIP;
+        int totalCount = types.size() * styles.size();
+        int duplicateCount = 0;
+
+        for (ImageType type : types) {
+            for (Style style : styles) {
+                String typePrompt = type.getTypePrompt() != null ? type.getTypePrompt() : "";
+                String stylePrompt = style.getStylePrompt() != null ? style.getStylePrompt() : "";
+
+                String finalPrompt = composeFinalPrompt(typePrompt, stylePrompt, request.getUserPrompt().trim());
+                String hash = computeHash(finalPrompt, generationParams);
+
+                if (assetRepository.existsByHash(hash)) {
+                    duplicateCount++;
+                }
+            }
+        }
+
+        return new GenerationCheckResult(totalCount, duplicateCount, totalCount - duplicateCount);
+    }
+
+    // ===== Генерация =====
+
+    public List<GenerationRequest> generate(Long currentUserId, GenerateRequest request) {
+
+        // === Шаг 0: Валидация ===
+
+        validateRequest(request);
+
+        List<ImageType> types = request.getImageTypeIds().stream()
+                .map(imageTypeService::getById)
+                .toList();
+
+        List<Style> styles = request.getStyleIds().stream()
+                .map(styleService::getById)
+                .toList();
+
+        // === Шаг 1: Создать batch ===
 
         String generationParams = request.getGenerationParams() != null
                 ? request.getGenerationParams() : "{}";
@@ -96,16 +119,13 @@ public class GenerationService {
                 currentUserId,
                 request.getUserPrompt().trim(),
                 generationParams,
-                dedupeMode,
+                request.isOverwriteDuplicates(),
                 providerName,
                 request.getModel(),
                 request.getRoutingMode() != null ? request.getRoutingMode() : RoutingMode.DIRECT
         );
 
-        log.info("Batch #{}: начата генерация, {} типов × {} стилей = {} запросов, provider={}",
-                batch.getId(), types.size(), styles.size(), types.size() * styles.size(), providerName);
-
-        // === Шаг 2: Сформировать request-ы (декартово произведение) ===
+        // === Шаг 2: Сформировать request-ы (только не-дубликаты, или все если overwrite) ===
 
         List<GenerationRequest> requests = new ArrayList<>();
 
@@ -118,13 +138,31 @@ public class GenerationService {
                 String finalPrompt = composeFinalPrompt(typePrompt, stylePrompt, userPrompt);
                 String finalPromptHash = computeHash(finalPrompt, generationParams);
 
+                // Если не overwrite — пропустить дубликаты (НЕ создавать request)
+                if (!request.isOverwriteDuplicates()) {
+                    boolean isDuplicate = assetRepository.existsByHash(finalPromptHash);
+                    if (isDuplicate) {
+                        log.info("Batch #{}: пропуск дубликата type={} style={} (hash: {}...)",
+                                batch.getId(), type.getId(), style.getId(),
+                                finalPromptHash.substring(0, 8));
+                        continue;
+                    }
+                }
+
                 GenerationRequest genRequest = requestRepository.create(
                         batch.getId(), type.getId(), style.getId(), finalPromptHash
                 );
-
                 requests.add(genRequest);
             }
         }
+
+        if (requests.isEmpty()) {
+            log.info("Batch #{}: все пары — дубликаты, нечего генерировать", batch.getId());
+            return requests;
+        }
+
+        log.info("Batch #{}: {} запросов к генерации (overwrite={}), provider={}",
+                batch.getId(), requests.size(), request.isOverwriteDuplicates(), providerName);
 
         // === Шаг 3: Выбрать провайдер ===
 
@@ -132,7 +170,6 @@ public class GenerationService {
         try {
             provider = providerRouter.resolve(providerName);
         } catch (AiProviderException e) {
-            // Если провайдер недоступен — помечаем все как FAILED
             for (GenerationRequest genReq : requests) {
                 requestRepository.markFailed(genReq.getId(), e.getMessage());
                 genReq.setStatus(RequestStatus.FAILED);
@@ -141,19 +178,153 @@ public class GenerationService {
             return requests;
         }
 
-        // Парсим aspect ratio из generationParams (если указан)
         String aspectRatio = parseStringParam(generationParams, "aspectRatio", DEFAULT_ASPECT_RATIO);
-
-        // Модель из запроса клиента (null → провайдер использует свой дефолт)
         String requestedModel = request.getModel();
 
         // === Шаг 4: Последовательное выполнение ===
 
+        processRequests(requests, types, styles, batch, provider, aspectRatio, requestedModel);
+
+        return requests;
+    }
+
+    // ===== Возобновление после перезагрузки =====
+
+    /**
+     * Возобновляет незавершённые запросы из указанного batch.
+     * Вызывается при старте сервера для RUNNING и PENDING запросов,
+     * которые остались после падения/перезагрузки.
+     * Выполняется асинхронно, чтобы не блокировать старт приложения.
+     */
+    @Async
+    public void resumeBatchAsync(Long batchId) {
+        GenerationBatch batch = batchRepository.findById(batchId).orElse(null);
+        if (batch == null) {
+            log.warn("Resume: batch #{} не найден, пропускаю", batchId);
+            return;
+        }
+
+        List<GenerationRequest> allRequests = requestRepository.findByBatchId(batchId);
+        List<GenerationRequest> toProcess = allRequests.stream()
+                .filter(r -> r.getStatus() == RequestStatus.RUNNING
+                          || r.getStatus() == RequestStatus.PENDING)
+                .toList();
+
+        if (toProcess.isEmpty()) {
+            return;
+        }
+
+        log.info("Resume batch #{}: {} запросов к обработке (provider={})",
+                batchId, toProcess.size(), batch.getProvider());
+
+        ImageAiProvider provider;
+        try {
+            provider = providerRouter.resolve(batch.getProvider());
+        } catch (AiProviderException e) {
+            log.error("Resume batch #{}: провайдер недоступен — {}", batchId, e.getMessage());
+            for (GenerationRequest genReq : toProcess) {
+                requestRepository.markFailed(genReq.getId(), "Resume failed: " + e.getMessage());
+            }
+            return;
+        }
+
+        String generationParams = batch.getGenerationParams() != null
+                ? batch.getGenerationParams() : "{}";
+        String aspectRatio = parseStringParam(generationParams, "aspectRatio", DEFAULT_ASPECT_RATIO);
+        String requestedModel = batch.getModel();
+
+        boolean authFailed = false;
+
+        for (GenerationRequest genReq : toProcess) {
+
+            if (authFailed) {
+                requestRepository.markFailed(genReq.getId(),
+                        "Генерация остановлена: ошибка авторизации провайдера");
+                continue;
+            }
+
+            requestRepository.markRunning(genReq.getId());
+
+            try {
+                ImageType type = imageTypeService.getById(genReq.getImageTypeId());
+                Style style = styleService.getById(genReq.getStyleId());
+
+                String typePrompt = type.getTypePrompt() != null ? type.getTypePrompt() : "";
+                String stylePrompt = style.getStylePrompt() != null ? style.getStylePrompt() : "";
+                String finalPrompt = composeFinalPrompt(typePrompt, stylePrompt, batch.getUserPrompt());
+
+                log.debug("Resume request #{}: отправлен к {}", genReq.getId(), provider.providerName());
+
+                byte[] imageBytes = provider.generate(finalPrompt, aspectRatio, requestedModel);
+                String fileUri = imageStorageService.save(imageBytes);
+
+                Asset asset = assetRepository.create(new Asset()
+                        .setImageTypeId(genReq.getImageTypeId())
+                        .setStyleId(genReq.getStyleId())
+                        .setFileUri(fileUri)
+                );
+
+                requestRepository.markDone(genReq.getId(), asset.getId());
+                log.info("Resume request #{}: DONE, asset #{}, файл {}",
+                        genReq.getId(), asset.getId(), fileUri);
+
+            } catch (AiProviderException e) {
+                requestRepository.markFailed(genReq.getId(), e.getMessage());
+                log.warn("Resume request #{}: FAILED — {}", genReq.getId(), e.getMessage());
+
+                if (e.getHttpStatus() == 401 || e.getHttpStatus() == 403 || e.getHttpStatus() == 402) {
+                    authFailed = true;
+                    log.error("Resume: ошибка авторизации ({}) — остальные запросы batch #{} будут отменены",
+                            e.getHttpStatus(), batchId);
+                }
+
+            } catch (IOException e) {
+                String msg = "Ошибка сохранения файла: " + e.getMessage();
+                requestRepository.markFailed(genReq.getId(), msg);
+                log.error("Resume request #{}: {}", genReq.getId(), msg, e);
+
+            } catch (Exception e) {
+                requestRepository.markFailed(genReq.getId(), e.getMessage());
+                log.error("Resume request #{}: неожиданная ошибка", genReq.getId(), e);
+            }
+        }
+
+        log.info("Resume batch #{}: завершён", batchId);
+    }
+
+    // ===== Вспомогательные методы =====
+
+    private void validateRequest(GenerateRequest request) {
+        if (request.getUserPrompt() == null || request.getUserPrompt().isBlank()) {
+            throw new IllegalArgumentException("Промпт не может быть пустым");
+        }
+        if (request.getImageTypeIds() == null || request.getImageTypeIds().isEmpty()) {
+            throw new IllegalArgumentException("Выберите хотя бы один тип");
+        }
+        if (request.getStyleIds() == null || request.getStyleIds().isEmpty()) {
+            throw new IllegalArgumentException("Выберите хотя бы один стиль");
+        }
+        if (request.getImageTypeIds().contains(ImageTypeService.UNDEFINED_TYPE_ID)) {
+            throw new IllegalArgumentException(
+                    "Нельзя генерировать с неопределённым типом изображения");
+        }
+        if (request.getStyleIds().contains(StyleService.UNDEFINED_STYLE_ID)) {
+            throw new IllegalArgumentException(
+                    "Нельзя генерировать с неопределённым стилем");
+        }
+    }
+
+    /**
+     * Общий цикл обработки запросов — используется и в generate(), и мог бы в resume.
+     */
+    private void processRequests(List<GenerationRequest> requests,
+                                  List<ImageType> types, List<Style> styles,
+                                  GenerationBatch batch, ImageAiProvider provider,
+                                  String aspectRatio, String requestedModel) {
         boolean authFailed = false;
 
         for (GenerationRequest genReq : requests) {
 
-            // При ошибке авторизации — остальные тоже не пройдут
             if (authFailed) {
                 requestRepository.markFailed(genReq.getId(),
                         "Генерация остановлена: ошибка авторизации провайдера");
@@ -162,21 +333,9 @@ public class GenerationService {
                 continue;
             }
 
-            // Проверка дедупликации
-            boolean isDuplicate = assetRepository.existsByHash(genReq.getFinalPromptHash());
-
-            if (isDuplicate && dedupeMode == DedupeMode.SKIP) {
-                requestRepository.markSkipped(genReq.getId());
-                genReq.setStatus(RequestStatus.SKIPPED);
-                log.info("Request #{}: SKIPPED (дубликат, hash: {}...)",
-                        genReq.getId(), genReq.getFinalPromptHash().substring(0, 8));
-                continue;
-            }
-
             requestRepository.markRunning(genReq.getId());
 
             try {
-                // Собираем finalPrompt для отправки в AI
                 ImageType type = types.stream()
                         .filter(t -> t.getId().equals(genReq.getImageTypeId()))
                         .findFirst().orElseThrow();
@@ -192,13 +351,9 @@ public class GenerationService {
                         genReq.getId(), provider.providerName(),
                         genReq.getFinalPromptHash().substring(0, 8), aspectRatio);
 
-                // Вызов AI-провайдера
                 byte[] imageBytes = provider.generate(finalPrompt, aspectRatio, requestedModel);
-
-                // Сохранение на диск
                 String fileUri = imageStorageService.save(imageBytes);
 
-                // Сохранить asset в БД
                 Asset asset = assetRepository.create(new Asset()
                         .setImageTypeId(genReq.getImageTypeId())
                         .setStyleId(genReq.getStyleId())
@@ -218,7 +373,6 @@ public class GenerationService {
                 genReq.setErrorMessage(e.getMessage());
                 log.warn("Request #{}: FAILED — {}", genReq.getId(), e.getMessage());
 
-                // Если 401/403/402 — нет смысла продолжать
                 if (e.getHttpStatus() == 401 || e.getHttpStatus() == 403 || e.getHttpStatus() == 402) {
                     authFailed = true;
                     log.error("Ошибка авторизации ({}) — остальные запросы batch будут отменены",
@@ -239,13 +393,7 @@ public class GenerationService {
                 log.error("Request #{}: неожиданная ошибка", genReq.getId(), e);
             }
         }
-
-        // Статус batch не хранится — вычисляется по COUNT реквестов
-
-        return requests;
     }
-
-    // ===== Вспомогательные методы =====
 
     /**
      * Собирает финальный промпт по шаблону из ai.prompt-template.
@@ -283,11 +431,9 @@ public class GenerationService {
             int colonIdx = json.indexOf(':', idx + searchKey.length());
             if (colonIdx < 0) return defaultValue;
 
-            // Ищем открывающую кавычку
             int quoteStart = json.indexOf('"', colonIdx + 1);
             if (quoteStart < 0) return defaultValue;
 
-            // Ищем закрывающую кавычку
             int quoteEnd = json.indexOf('"', quoteStart + 1);
             if (quoteEnd < 0) return defaultValue;
 

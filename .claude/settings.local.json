@@ -24,7 +24,25 @@
       "Bash(cmd.exe /c \"mvnw.cmd -pl web -am clean test 2>&1\")",
       "Bash(\"C:/Users/alkat/Desktop/ai-img-back/mvnw.cmd\" -pl web -am clean test)",
       "Bash(git check-ignore -v \"web/src/main/resources/application-local.properties\")",
-      "Bash(xargs grep -l \"DALL-E\\\\|Gemini\\\\|gpt-4v\")"
+      "Bash(xargs grep -l \"DALL-E\\\\|Gemini\\\\|gpt-4v\")",
+      "WebFetch(domain:platform.stability.ai)",
+      "WebFetch(domain:staging-api.stability.ai)",
+      "WebFetch(domain:platform.openai.com)",
+      "WebFetch(domain:gist.github.com)",
+      "WebFetch(domain:developers.openai.com)",
+      "Bash(python3 -c \":*)",
+      "Bash(python -c \"import json; f=open\\(r''C:\\\\Users\\\\alkat\\\\.claude\\\\projects\\\\C--Users-alkat-Desktop-ai-img-back\\\\882b5f2c-ba8f-4cb4-a70f-294477336a58\\\\tool-results\\\\toolu_014W3yLNaMkiYJqMGB94t8uk.json'',''r'',encoding=''utf-8''\\); data=json.load\\(f\\); print\\(data[0][''text''][:15000]\\)\")",
+      "Bash(PYTHONUTF8=1 python -c \"import json,sys; sys.stdout.reconfigure\\(encoding=''utf-8''\\); f=open\\(r''C:\\\\Users\\\\alkat\\\\.claude\\\\projects\\\\C--Users-alkat-Desktop-ai-img-back\\\\882b5f2c-ba8f-4cb4-a70f-294477336a58\\\\tool-results\\\\toolu_014W3yLNaMkiYJqMGB94t8uk.json'',''r'',encoding=''utf-8''\\); data=json.load\\(f\\); t=data[0][''text'']; print\\(t[:15000]\\)\")",
+      "Bash(PYTHONUTF8=1 python -c \"import json,sys; sys.stdout.reconfigure\\(encoding=''utf-8''\\); f=open\\(r''C:\\\\Users\\\\alkat\\\\.claude\\\\projects\\\\C--Users-alkat-Desktop-ai-img-back\\\\882b5f2c-ba8f-4cb4-a70f-294477336a58\\\\tool-results\\\\toolu_014W3yLNaMkiYJqMGB94t8uk.json'',''r'',encoding=''utf-8''\\); data=json.load\\(f\\); t=data[0][''text'']; print\\(t[15000:30000]\\)\")",
+      "Bash(PYTHONUTF8=1 python -c \"import json,sys; sys.stdout.reconfigure\\(encoding=''utf-8''\\); f=open\\(r''C:\\\\Users\\\\alkat\\\\.claude\\\\projects\\\\C--Users-alkat-Desktop-ai-img-back\\\\882b5f2c-ba8f-4cb4-a70f-294477336a58\\\\tool-results\\\\toolu_014W3yLNaMkiYJqMGB94t8uk.json'',''r'',encoding=''utf-8''\\); data=json.load\\(f\\); t=data[0][''text'']; print\\(t[30000:]\\)\")",
+      "Bash(xargs grep -l \"GenerateParams\\\\|GenerationParams\")",
+      "Bash(xargs grep -l \"AiModelRegistry\\\\|AiModelConfig\")",
+      "Bash(xargs grep -l \"ImageTypeData\\\\|StyleData\")",
+      "Bash(xargs grep -l \"fun AssetGrid\\\\|fun TypeSelector\\\\|fun StyleFilter\\\\|fun ImageViewerDialog\")",
+      "Bash(xargs grep -l \"Image\\\\|Cache\\\\|Coil\")",
+      "Bash(xargs grep -l \"WebMvcConfigurer\\\\|addResourceHandlers\\\\|DispatcherServlet\\\\|ContentType\")",
+      "Bash(xargs grep -l \"fileUri\\\\|download\\\\|image\\\\|thumbnail\")",
+      "Bash(xargs grep -l \"Image\\\\|Coil\\\\|AsyncImage\\\\|download\")"
     ]
   }
 }

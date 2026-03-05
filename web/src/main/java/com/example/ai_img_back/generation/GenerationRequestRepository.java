@@ -79,8 +79,24 @@ public class GenerationRequestRepository {
                 .addValue("errorMessage", errorMessage));
     }
 
-    public void markSkipped(Long id) {
-        String sql = "UPDATE generation_requests SET status = 'SKIPPED' WHERE id = :id";
-        jdbcTemplate.update(sql, new MapSqlParameterSource("id", id));
+    /**
+     * Найти все запросы с указанным статусом.
+     */
+    public List<GenerationRequest> findByStatus(RequestStatus status) {
+        String sql = "SELECT * FROM generation_requests WHERE status = :status ORDER BY created_at";
+        return jdbcTemplate.query(sql,
+                new MapSqlParameterSource("status", status.name()), REQUEST_MAPPER);
+    }
+
+    /**
+     * Найти уникальные batch ID для незавершённых запросов (RUNNING или PENDING).
+     */
+    public List<Long> findUnfinishedBatchIds() {
+        String sql = """
+                SELECT DISTINCT batch_id FROM generation_requests
+                WHERE status IN ('RUNNING', 'PENDING')
+                ORDER BY batch_id
+                """;
+        return jdbcTemplate.queryForList(sql, new MapSqlParameterSource(), Long.class);
     }
 }

@@ -326,7 +326,7 @@ public class GenerationControllerTest extends BaseTest {
     // ═══════════════════════════════════════════
 
     @Test
-    void generate_duplicateWithSkip_shouldReturnSkipped() throws Exception {
+    void generate_duplicateWithoutOverwrite_shouldReturnEmpty() throws Exception {
         UserDTO user = createUser();
         ImageTypeDTO type = createType(user.getId(), "Dedup-" + UUID.randomUUID());
         StyleDTO style = createStyle(user.getId(), "Dedup-" + UUID.randomUUID());
@@ -340,11 +340,10 @@ public class GenerationControllerTest extends BaseTest {
         GenerationResultDTO[] first = generate(user.getId(), req);
         assertEquals("DONE", first[0].getStatus().name());
 
-        // Второй раз с SKIP — SKIPPED
-        req.setDedupeMode(com.example.ai_img_back.clientutils.enums.DedupeMode.SKIP);
+        // Второй раз без overwrite — дубликат не создаёт request, пустой массив
+        req.setOverwriteDuplicates(false);
         GenerationResultDTO[] second = generate(user.getId(), req);
-        assertEquals("SKIPPED", second[0].getStatus().name());
-        assertNull(second[0].getCreatedAssetId());
+        assertEquals(0, second.length);
     }
 
     @Test
@@ -363,8 +362,8 @@ public class GenerationControllerTest extends BaseTest {
         assertEquals("DONE", first[0].getStatus().name());
         Long firstAssetId = first[0].getCreatedAssetId();
 
-        // Второй раз с OVERWRITE — тоже DONE, но новый asset
-        req.setDedupeMode(com.example.ai_img_back.clientutils.enums.DedupeMode.OVERWRITE);
+        // Второй раз с overwrite=true — тоже DONE, но новый asset
+        req.setOverwriteDuplicates(true);
         GenerationResultDTO[] second = generate(user.getId(), req);
         assertEquals("DONE", second[0].getStatus().name());
         assertNotNull(second[0].getCreatedAssetId());
@@ -399,8 +398,8 @@ public class GenerationControllerTest extends BaseTest {
     @Test
     void generate_samePromptDifferentUsers_globalDedup_shouldSkipSecond() throws Exception {
         /*
-         * Глобальная дедупликация: дефолтный режим SKIP.
-         * User1 генерирует → DONE. User2 с тем же промптом → SKIPPED,
+         * Глобальная дедупликация: по умолчанию overwriteDuplicates=false.
+         * User1 генерирует → DONE. User2 с тем же промптом → пустой массив,
          * т.к. asset с таким hash уже существует (global dedup).
          */
         UserDTO user1 = createUser();
@@ -417,13 +416,13 @@ public class GenerationControllerTest extends BaseTest {
         assertEquals("DONE", r1[0].getStatus().name());
 
         GenerationResultDTO[] r2 = generate(user2.getId(), req);
-        assertEquals("SKIPPED", r2[0].getStatus().name());
+        assertEquals(0, r2.length);
     }
 
     @Test
     void generate_samePromptDifferentUsers_overwrite_shouldBothDone() throws Exception {
         /*
-         * С режимом OVERWRITE дедупликация игнорируется —
+         * С overwriteDuplicates=true дедупликация игнорируется —
          * оба пользователя получают DONE.
          */
         UserDTO user1 = createUser();
@@ -433,7 +432,7 @@ public class GenerationControllerTest extends BaseTest {
 
         GenerateRequest req = new GenerateRequest();
         req.setUserPrompt("один и тот же промпт overwrite");
-        req.setDedupeMode(com.example.ai_img_back.clientutils.enums.DedupeMode.OVERWRITE);
+        req.setOverwriteDuplicates(true);
         req.setImageTypeIds(List.of(type.getId()));
         req.setStyleIds(List.of(style.getId()));
 
@@ -442,5 +441,66 @@ public class GenerationControllerTest extends BaseTest {
 
         GenerationResultDTO[] r2 = generate(user2.getId(), req);
         assertEquals("DONE", r2[0].getStatus().name());
+    }
+
+    // ═══════════════════════════════════════════
+    // Проверка дубликатов (check endpoint)
+    // ═══════════════════════════════════════════
+
+    @Test
+    void check_noDuplicates_shouldReturnZeroDuplicates() throws Exception {
+        UserDTO user = createUser();
+        ImageTypeDTO type = createType(user.getId(), "Check-" + UUID.randomUUID());
+        StyleDTO style = createStyle(user.getId(), "Check-" + UUID.randomUUID());
+
+        GenerateRequest req = new GenerateRequest();
+        req.setUserPrompt("новый промпт для проверки");
+        req.setImageTypeIds(List.of(type.getId()));
+        req.setStyleIds(List.of(style.getId()));
+
+        MockHttpServletResponse resp = mvc.perform(
+                post("/generations/check")
+                        .content(objectMapper.writeValueAsString(req))
+                        .contentType(MediaType.APPLICATION_JSON))
+                .andExpect(status().isOk())
+                .andReturn().getResponse();
+
+        com.example.ai_img_back.clientutils.dto.GenerationCheckResult result =
+                objectMapper.readValue(resp.getContentAsString(),
+                        com.example.ai_img_back.clientutils.dto.GenerationCheckResult.class);
+
+        assertEquals(1, result.getTotalCount());
+        assertEquals(0, result.getDuplicateCount());
+        assertEquals(1, result.getNewCount());
+    }
+
+    @Test
+    void check_withDuplicates_shouldReturnCorrectCounts() throws Exception {
+        UserDTO user = createUser();
+        ImageTypeDTO type = createType(user.getId(), "CheckD-" + UUID.randomUUID());
+        StyleDTO style = createStyle(user.getId(), "CheckD-" + UUID.randomUUID());
+
+        // Сначала сгенерируем
+        GenerateRequest genReq = new GenerateRequest();
+        genReq.setUserPrompt("промпт для check дубликатов");
+        genReq.setImageTypeIds(List.of(type.getId()));
+        genReq.setStyleIds(List.of(style.getId()));
+        generate(user.getId(), genReq);
+
+        // Теперь check — должен показать 1 дубликат
+        MockHttpServletResponse resp = mvc.perform(
+                post("/generations/check")
+                        .content(objectMapper.writeValueAsString(genReq))
+                        .contentType(MediaType.APPLICATION_JSON))
+                .andExpect(status().isOk())
+                .andReturn().getResponse();
+
+        com.example.ai_img_back.clientutils.dto.GenerationCheckResult result =
+                objectMapper.readValue(resp.getContentAsString(),
+                        com.example.ai_img_back.clientutils.dto.GenerationCheckResult.class);
+
+        assertEquals(1, result.getTotalCount());
+        assertEquals(1, result.getDuplicateCount());
+        assertEquals(0, result.getNewCount());
     }
 }

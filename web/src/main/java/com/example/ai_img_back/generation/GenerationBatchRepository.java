@@ -8,7 +8,6 @@ import org.springframework.jdbc.core.namedparam.MapSqlParameterSource;
 import org.springframework.jdbc.core.namedparam.NamedParameterJdbcTemplate;
 import org.springframework.stereotype.Repository;
 
-import com.example.ai_img_back.clientutils.enums.DedupeMode;
 import com.example.ai_img_back.clientutils.enums.RoutingMode;
 
 import lombok.RequiredArgsConstructor;
@@ -24,21 +23,21 @@ public class GenerationBatchRepository {
             .setOwnerUserId(rs.getObject("owner_user_id", Long.class))
             .setUserPrompt(rs.getString("user_prompt"))
             .setGenerationParams(rs.getString("generation_params"))
-            .setDedupeMode(DedupeMode.valueOf(rs.getString("dedupe_mode")))
+            .setOverwriteDuplicates(rs.getBoolean("overwrite_duplicates"))
             .setProvider(rs.getString("provider"))
             .setModel(rs.getString("model"))
             .setRoutingMode(RoutingMode.valueOf(rs.getString("routing_mode")));
 
     public GenerationBatch create(Long ownerUserId, String userPrompt, String generationParams,
-                                   DedupeMode dedupeMode, String provider, String model,
+                                   boolean overwriteDuplicates, String provider, String model,
                                    RoutingMode routingMode) {
         String sql = """
                 INSERT INTO generation_batches (
                     owner_user_id, user_prompt, generation_params,
-                    dedupe_mode, provider, model, routing_mode
+                    overwrite_duplicates, provider, model, routing_mode
                 ) VALUES (
                     :ownerUserId, :userPrompt, CAST(:generationParams AS jsonb),
-                    :dedupeMode, :provider, :model, :routingMode
+                    :overwriteDuplicates, :provider, :model, :routingMode
                 )
                 RETURNING *
                 """;
@@ -47,7 +46,7 @@ public class GenerationBatchRepository {
                 .addValue("ownerUserId", ownerUserId)
                 .addValue("userPrompt", userPrompt)
                 .addValue("generationParams", generationParams)
-                .addValue("dedupeMode", dedupeMode.name())
+                .addValue("overwriteDuplicates", overwriteDuplicates)
                 .addValue("provider", provider)
                 .addValue("model", model)
                 .addValue("routingMode", routingMode.name());

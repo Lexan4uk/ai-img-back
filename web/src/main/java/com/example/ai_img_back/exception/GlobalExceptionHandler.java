@@ -2,6 +2,7 @@ package com.example.ai_img_back.exception;
 
 import java.util.Map;
 
+import com.example.ai_img_back.provider.AiProviderException;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -68,6 +69,18 @@ public class GlobalExceptionHandler {
                 .body(Map.of("error", ex.getMessage()));
     }
 
+
+    /**
+     * Ошибка AI-провайдера → 502.
+     * Срабатывает если AiProviderException пробрасывается до контроллера
+     * (в штатном потоке она перехватывается внутри GenerationService).
+     */
+    @ExceptionHandler(AiProviderException.class)
+    public ResponseEntity<Map<String, String>> handleAiProvider(AiProviderException ex) {
+        return ResponseEntity
+                .status(HttpStatus.BAD_GATEWAY)                  // 502
+                .body(Map.of("error", "Ошибка AI-провайдера: " + ex.getMessage()));
+    }
 
     /**
      * Всё остальное → 500.
