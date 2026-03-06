@@ -40,11 +40,6 @@ public class AuthProxyController {
         return proxy("/login", body);
     }
 
-    @PostMapping("/validate")
-    public ResponseEntity<String> validate(@org.springframework.web.bind.annotation.RequestBody String body) {
-        return proxy("/validate", body);
-    }
-
     @PostMapping("/refresh")
     public ResponseEntity<String> refresh(@org.springframework.web.bind.annotation.RequestBody String body) {
         return proxy("/refresh", body);
@@ -67,7 +62,7 @@ public class AuthProxyController {
      */
     private ResponseEntity<String> proxy(String path, String jsonBody) {
         Request request = new Request.Builder()
-                .url(properties.getUrl() + path)
+                .url(properties.getUrl() + "/api/auth" + path)
                 .post(okhttp3.RequestBody.create(jsonBody, JSON))
                 .build();
 

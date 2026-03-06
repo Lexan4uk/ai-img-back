@@ -48,7 +48,15 @@
       "Bash(mvn clean install -DskipTests -pl auth-server)",
       "Bash(mvn clean install -DskipTests -pl web)",
       "Bash(xargs grep -l \"Interceptor\\\\|Filter\\\\|WebMvc\\\\|SecurityFilter\")",
-      "Bash(mvn install -DskipTests -pl web)"
+      "Bash(mvn install -DskipTests -pl web)",
+      "Bash(./mvnw compile -pl web -am -q)",
+      "Bash(curl -s http://localhost:9090/register -X POST -H \"Content-Type: application/json\" -d '{\"\"email\"\":\"\"test@test.com\"\",\"\"password\"\":\"\"654321\"\",\"\"displayName\"\":\"\"Test\"\"}')",
+      "Bash(TOKEN=\"eyJhbGciOiJIUzUxMiJ9.eyJqdGkiOiJiZWZjZWRlMy0zMGI3LTQxNjItOGRhZi1mOGExZjhlYmYwOTEiLCJzdWIiOiIzIiwiZW1haWwiOiJ0ZXN0QHRlc3QuY29tIiwiZGlzcGxheU5hbWUiOiJUZXN0Iiwicm9sZXMiOiJVU0VSIiwiaWF0IjoxNzcyODE5ODE0LCJleHAiOjE3NzI4MjM0MTR9.cdII44oslJa7xzllzFoemlh6zzl9kuAG-pHNwlzUlQOlDkJ__dmZMlgbh4oBfyv1_oeP7ADqy7mjIg4_Qo0kIg\")",
+      "Bash(curl -s http://localhost:8080/image-types -H \"Authorization: Bearer $TOKEN\")",
+      "Bash(netstat -ano)",
+      "Bash(while read PID)",
+      "Bash(do taskkill //F //PID $PID)",
+      "Bash(done)"
     ]
   }
 }

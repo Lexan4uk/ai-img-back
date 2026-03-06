@@ -14,18 +14,18 @@
 - Каскады ON DELETE SET NULL / CASCADE продолжают работать
 
 ### Заголовок `UserId` → `Authorization: Bearer`
-- Все контроллеры: `@RequestHeader("UserId") Long userId` → `@AuthUserId Long userId`
-- userId извлекается из JWT через `JwtAuthFilter` → `SecurityContext`
-- `HandlerMethodArgumentResolver` для `@AuthUserId`
+- Все контроллеры: `@RequestHeader("UserId") Long userId` → `@AuthenticationPrincipal AuthUser user`
+- userId извлекается из JWT через `JwtAuthFilter` → `AuthUser` → `SecurityContext`
+- Стандартная аннотация Spring Security `@AuthenticationPrincipal`, кастомные резолверы не нужны
 
 ### Новый фильтр `JwtAuthFilter`
 - `OncePerRequestFilter`, перехватывает все запросы кроме публичных
-- Публичные пути: `/auth/login`, `/auth/register`, `/auth/refresh`, `/assets/**`
-- Валидирует токен через auth-сервер (`POST /validate`) с кэшированием (Caffeine, TTL 10 мин)
+- Публичные пути: `/auth/login`, `/auth/register`, `/auth/refresh`
+- Валидирует JWT **локально** через JJWT (подпись + exp), без HTTP к auth-серверу
 
 ### Новый контроллер `AuthController`
 - Проксирует `/auth/login`, `/auth/register`, `/auth/refresh` на auth-сервер
-- `/auth/logout` — проксирует на auth-сервер (blacklist jti обоих токенов)
+- `/auth/logout` — проксирует на auth-сервер (blacklist jti refreshToken)
 
 ### Новые исключения в `GlobalExceptionHandler`
 - `AuthenticationException` → 401

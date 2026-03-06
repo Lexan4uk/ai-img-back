@@ -10,5 +10,5 @@ import lombok.Setter;
 @ConfigurationProperties(prefix = "auth.server")
 public class AuthServerProperties {
 
-    private String url = "http://localhost:9090";
+    private String url = "http://localhost:8090";
 }

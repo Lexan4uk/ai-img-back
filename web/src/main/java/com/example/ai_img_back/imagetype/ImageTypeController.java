@@ -2,8 +2,10 @@ package com.example.ai_img_back.imagetype;
 
 import java.util.List;
 
+import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.*;
 
+import com.example.ai_img_back.auth.AuthUser;
 import com.example.ai_img_back.clientutils.dto.ImageTypeDTO;
 import com.example.ai_img_back.clientutils.dto.ImageTypeRequest;
 
@@ -18,10 +20,10 @@ public class ImageTypeController {
 
     @PostMapping
     public ImageTypeDTO create(
-            @RequestAttribute("userId") Long currentUserId,
+            @AuthenticationPrincipal AuthUser currentUser,
             @RequestBody ImageTypeRequest request) {
         ImageType entity = imageTypeService.create(
-                currentUserId, request.getName(), request.getTypePrompt());
+                currentUser.getId(), request.getName(), request.getTypePrompt());
         return toDTO(entity);
     }
 
@@ -35,28 +37,28 @@ public class ImageTypeController {
     @DeleteMapping("/{id}")
     public void delete(
             @PathVariable Long id,
-            @RequestAttribute("userId") Long currentUserId) {
-        imageTypeService.delete(id, currentUserId);
+            @AuthenticationPrincipal AuthUser currentUser) {
+        imageTypeService.delete(id, currentUser.getId());
     }
 
     @PostMapping("/{id}/favorite")
     public void addFavorite(
             @PathVariable Long id,
-            @RequestAttribute("userId") Long currentUserId) {
-        imageTypeService.addFavorite(currentUserId, id);
+            @AuthenticationPrincipal AuthUser currentUser) {
+        imageTypeService.addFavorite(currentUser.getId(), id);
     }
 
     @DeleteMapping("/{id}/favorite")
     public void removeFavorite(
             @PathVariable Long id,
-            @RequestAttribute("userId") Long currentUserId) {
-        imageTypeService.removeFavorite(currentUserId, id);
+            @AuthenticationPrincipal AuthUser currentUser) {
+        imageTypeService.removeFavorite(currentUser.getId(), id);
     }
 
     @GetMapping("/favorites")
     public List<Long> getFavoriteIds(
-            @RequestAttribute("userId") Long currentUserId) {
-        return imageTypeService.getFavoriteIds(currentUserId);
+            @AuthenticationPrincipal AuthUser currentUser) {
+        return imageTypeService.getFavoriteIds(currentUser.getId());
     }
 
     private ImageTypeDTO toDTO(ImageType entity) {
