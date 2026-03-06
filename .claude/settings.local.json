@@ -42,7 +42,13 @@
       "Bash(xargs grep -l \"Image\\\\|Cache\\\\|Coil\")",
       "Bash(xargs grep -l \"WebMvcConfigurer\\\\|addResourceHandlers\\\\|DispatcherServlet\\\\|ContentType\")",
       "Bash(xargs grep -l \"fileUri\\\\|download\\\\|image\\\\|thumbnail\")",
-      "Bash(xargs grep -l \"Image\\\\|Coil\\\\|AsyncImage\\\\|download\")"
+      "Bash(xargs grep -l \"Image\\\\|Coil\\\\|AsyncImage\\\\|download\")",
+      "Bash(echo \"EXIT:$?\")",
+      "Bash(mvn clean install -DskipTests)",
+      "Bash(mvn clean install -DskipTests -pl auth-server)",
+      "Bash(mvn clean install -DskipTests -pl web)",
+      "Bash(xargs grep -l \"Interceptor\\\\|Filter\\\\|WebMvc\\\\|SecurityFilter\")",
+      "Bash(mvn install -DskipTests -pl web)"
     ]
   }
 }

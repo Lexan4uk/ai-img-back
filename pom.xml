@@ -27,6 +27,7 @@
     <modules>
         <module>client-utils</module>
         <module>web</module>
+        <module>auth-server</module>
     </modules>
 
 </project>

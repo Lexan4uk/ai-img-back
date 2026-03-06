@@ -18,7 +18,7 @@ public class ImageTypeController {
 
     @PostMapping
     public ImageTypeDTO create(
-            @RequestHeader("UserId") Long currentUserId,
+            @RequestAttribute("userId") Long currentUserId,
             @RequestBody ImageTypeRequest request) {
         ImageType entity = imageTypeService.create(
                 currentUserId, request.getName(), request.getTypePrompt());
@@ -35,27 +35,27 @@ public class ImageTypeController {
     @DeleteMapping("/{id}")
     public void delete(
             @PathVariable Long id,
-            @RequestHeader("UserId") Long currentUserId) {
+            @RequestAttribute("userId") Long currentUserId) {
         imageTypeService.delete(id, currentUserId);
     }
 
     @PostMapping("/{id}/favorite")
     public void addFavorite(
             @PathVariable Long id,
-            @RequestHeader("UserId") Long currentUserId) {
+            @RequestAttribute("userId") Long currentUserId) {
         imageTypeService.addFavorite(currentUserId, id);
     }
 
     @DeleteMapping("/{id}/favorite")
     public void removeFavorite(
             @PathVariable Long id,
-            @RequestHeader("UserId") Long currentUserId) {
+            @RequestAttribute("userId") Long currentUserId) {
         imageTypeService.removeFavorite(currentUserId, id);
     }
 
     @GetMapping("/favorites")
     public List<Long> getFavoriteIds(
-            @RequestHeader("UserId") Long currentUserId) {
+            @RequestAttribute("userId") Long currentUserId) {
         return imageTypeService.getFavoriteIds(currentUserId);
     }
 

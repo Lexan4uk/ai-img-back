@@ -23,7 +23,7 @@ public class UserRepository {
 
     public User create(String email, String displayName) {
         String sql = """
-                INSERT INTO users (email, display_name)
+                INSERT INTO auth_users (email, display_name)
                 VALUES (:email, :displayName)
                 RETURNING *
                 """;
@@ -38,7 +38,7 @@ public class UserRepository {
     public Optional<User> findById(Long id) {
         String sql = """
                 SELECT id, email, display_name
-                FROM users
+                FROM auth_users
                 WHERE id = :id
                 """;
 
@@ -50,7 +50,7 @@ public class UserRepository {
     public List<User> findAll() {
         String sql = """
                 SELECT id, email, display_name
-                FROM users
+                FROM auth_users
                 ORDER BY id
                 """;
 
@@ -59,7 +59,7 @@ public class UserRepository {
 
     public void delete(Long id) {
         String sql = """
-                DELETE FROM users
+                DELETE FROM auth_users
                 WHERE id = :id
                 """;
 
